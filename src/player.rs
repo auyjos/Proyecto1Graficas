@@ -23,7 +23,9 @@ fn check_collision(maze: &Maze, x: f32, y: f32, block_size: usize) -> bool {
         return true; // Out of bounds
     }
     
-    maze[j][i] != ' ' // Return true if it's a wall
+    // Treat 'p' (player spawn) as walkable space like ' '
+    let cell = maze[j][i];
+    cell != ' ' && cell != 'p' // Return true if it's a wall
 }
 
 pub fn process_events(player: &mut Player, rl: &RaylibHandle, maze: &Maze, block_size: usize, window_width: i32, window_height: i32) {
