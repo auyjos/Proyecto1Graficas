@@ -83,8 +83,12 @@ fn draw_sprite(
 
             // Skip transparent pixels
             if color != TRANSPARENT_COLOR {
-                framebuffer.set_current_color(color);
-                framebuffer.set_pixel(x as u32, y as u32);
+                // Check depth buffer - only render if sprite is closer than existing pixel
+                let current_depth = framebuffer.get_depth(x as u32, y as u32);
+                if sprite_d < current_depth {
+                    framebuffer.set_current_color(color);
+                    framebuffer.set_pixel_with_depth(x as u32, y as u32, sprite_d);
+                }
             }
         }
     }
@@ -140,19 +144,68 @@ fn render_world(
   block_size: usize,
   player: &Player,
   texture_cache: &TextureManager,
+  performance_mode: bool,
 ) {
   let num_rays = framebuffer.width;
   let hh = framebuffer.height as f32 / 2.0;
 
-  // Draw sky and floor
-  for i in 0..framebuffer.width {
+  // Draw sky and floor - use simple or detailed based on performance mode
+  if performance_mode {
+    // Simple, fast sky and floor for performance mode
     framebuffer.set_current_color(Color::SKYBLUE);
-    for j in 0..(framebuffer.height / 2) {
-      framebuffer.set_pixel(i, j);
+    for i in 0..framebuffer.width {
+      for j in 0..(framebuffer.height / 2) {
+        framebuffer.set_pixel_with_depth(i, j, 10000.0);
+      }
     }
     framebuffer.set_current_color(Color::GAINSBORO);
-    for j in (framebuffer.height / 2)..framebuffer.height {
-      framebuffer.set_pixel(i, j);
+    for i in 0..framebuffer.width {
+      for j in (framebuffer.height / 2)..framebuffer.height {
+        framebuffer.set_pixel_with_depth(i, j, 10000.0);
+      }
+    }
+  } else {
+    // Detailed gradients for quality mode
+    let mut sky_colors = Vec::with_capacity((framebuffer.height / 2) as usize);
+    let mut floor_colors = Vec::with_capacity((framebuffer.height / 2) as usize);
+    
+    for j in 0..(framebuffer.height / 2) {
+      let gradient_factor = j as f32 / (framebuffer.height as f32 / 2.0);
+      sky_colors.push(Color::new(
+        (30.0 + gradient_factor * 105.0) as u8,
+        (30.0 + gradient_factor * 176.0) as u8,
+        (60.0 + gradient_factor * 175.0) as u8,
+        255
+      ));
+    }
+    
+    for j in 0..(framebuffer.height / 2) {
+      let distance_from_center = j as f32;
+      let fog_factor = (distance_from_center / (framebuffer.height as f32 / 2.0)).min(1.0);
+      floor_colors.push(Color::new(
+        (40.0 + fog_factor * 40.0) as u8,
+        (35.0 + fog_factor * 35.0) as u8,
+        (30.0 + fog_factor * 30.0) as u8,
+        255
+      ));
+    }
+
+    // Draw sky and floor with pre-calculated colors
+    for i in 0..framebuffer.width {
+      // Sky
+      for j in 0..(framebuffer.height / 2) {
+        framebuffer.set_current_color(sky_colors[j as usize]);
+        framebuffer.set_pixel_with_depth(i, j, 10000.0);
+      }
+      
+      // Floor
+      for j in (framebuffer.height / 2)..framebuffer.height {
+        let floor_index = (j - framebuffer.height / 2) as usize;
+        if floor_index < floor_colors.len() {
+          framebuffer.set_current_color(floor_colors[floor_index]);
+          framebuffer.set_pixel_with_depth(i, j, 10000.0);
+        }
+      }
     }
   }
 
@@ -173,9 +226,24 @@ fn render_world(
     for y in stake_top..stake_bottom {
       let ty = (y as f32 - stake_top as f32) / (stake_bottom as f32 - stake_top as f32) * 128.0;
 
-      let color = texture_cache.get_pixel_color(intersect.impact, intersect.tx as u32, ty as u32);
+      let mut color = texture_cache.get_pixel_color(intersect.impact, intersect.tx as u32, ty as u32);
+      
+      // Only apply fog in quality mode for better performance
+      if !performance_mode && distance_to_wall > 200.0 {
+        let fog_factor = ((distance_to_wall - 200.0) * 0.003333).min(0.7); // Pre-calculate division
+        
+        // Faster color blending
+        let inv_fog = 1.0 - fog_factor;
+        color = Color::new(
+          (color.r as f32 * inv_fog + 60.0 * fog_factor) as u8,
+          (color.g as f32 * inv_fog + 60.0 * fog_factor) as u8,
+          (color.b as f32 * inv_fog + 90.0 * fog_factor) as u8,
+          255
+        );
+      }
+      
       framebuffer.set_current_color(color);
-      framebuffer.set_pixel(i, y as u32);
+      framebuffer.set_pixel_with_depth(i, y as u32, distance_to_wall);
     }
   }
 }
@@ -262,6 +330,47 @@ fn render_minimap(
   d.draw_text("MINIMAP", minimap_x, minimap_y - 25, 16, Color::WHITE);
 }
 
+fn render_pause_menu(
+  d: &mut RaylibDrawHandle,
+  selected_option: usize,
+  screen_width: i32,
+  screen_height: i32,
+) {
+  // Draw semi-transparent overlay
+  d.draw_rectangle(0, 0, screen_width, screen_height, Color::new(0, 0, 0, 180));
+  
+  // Calculate menu position (center of screen)
+  let menu_width = 300;
+  let menu_height = 200;
+  let menu_x = (screen_width - menu_width) / 2;
+  let menu_y = (screen_height - menu_height) / 2;
+  
+  // Draw menu background
+  d.draw_rectangle(menu_x, menu_y, menu_width, menu_height, Color::new(40, 40, 40, 240));
+  d.draw_rectangle_lines(menu_x, menu_y, menu_width, menu_height, Color::WHITE);
+  
+  // Draw title
+  let title = "GAME PAUSED";
+  let title_width = 24 * title.len() as i32 / 2; // Approximate text width
+  d.draw_text(title, menu_x + (menu_width - title_width) / 2, menu_y + 30, 24, Color::WHITE);
+  
+  // Draw menu options
+  let options = ["Resume", "Quit"];
+  for (i, option) in options.iter().enumerate() {
+    let y_pos = menu_y + 80 + (i as i32 * 40);
+    let color = if i == selected_option { Color::YELLOW } else { Color::WHITE };
+    let prefix = if i == selected_option { "> " } else { "  " };
+    
+    let text = format!("{}{}", prefix, option);
+    let text_width = 20 * text.len() as i32 / 2; // Approximate text width
+    d.draw_text(&text, menu_x + (menu_width - text_width) / 2, y_pos, 20, color);
+  }
+  
+  // Draw controls
+  d.draw_text("Use UP/DOWN or W/S to navigate", menu_x + 20, menu_y + menu_height - 40, 14, Color::LIGHTGRAY);
+  d.draw_text("Press ENTER or SPACE to select", menu_x + 20, menu_y + menu_height - 20, 14, Color::LIGHTGRAY);
+}
+
 fn main() {
   // Use your actual screen resolution
   let mut window_width = 1980;
@@ -276,6 +385,9 @@ fn main() {
     .vsync()
     .build();
 
+  // Disable the default ESC key for closing the window
+  window.set_exit_key(None);
+
   // Start in fullscreen mode and get the actual screen dimensions
   window.toggle_fullscreen();
   
@@ -289,9 +401,9 @@ fn main() {
   println!("Your actual screen: 1980x1200");
   println!("Raylib reports: {}x{}", reported_width, reported_height);
   
-  // Use your actual screen dimensions regardless of what raylib reports
-  window_width = 1920;
-  window_height = 1080;
+  // Use the correct screen dimensions
+  window_width = 1980;
+  window_height = 1200;
 
   let mut framebuffer = Framebuffer::new(window_width as u32, window_height as u32);
   framebuffer.set_background_color(Color::new(50, 50, 100, 255));
@@ -311,10 +423,12 @@ fn main() {
   // Initialize texture cache once
   let texture_cache = TextureManager::new(&mut window, &raylib_thread);
 
-  let mut mouse_control_enabled = true;
   let mut show_minimap = false; // Toggle for minimap display
+  let mut game_paused = false; // Toggle for pause menu
+  let mut selected_menu_option = 0; // 0 = Resume, 1 = Quit
+  let mut performance_mode = false; // Toggle for performance vs quality
 
-  //window.set_target_fps(60); // Set target FPS to 60 for smoother rendering
+  window.set_target_fps(60); // Set target FPS to 60 for consistent performance
 
   while !window.window_should_close() {
     // Always ensure framebuffer matches current window size
@@ -339,27 +453,63 @@ fn main() {
       framebuffer.set_background_color(Color::new(50, 50, 100, 255));
     }
 
-    // Toggle mouse control with ESC key
+    // Toggle pause menu with ESC key
     if window.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
-      mouse_control_enabled = !mouse_control_enabled;
-      if mouse_control_enabled {
-        window.disable_cursor();
-      } else {
+      game_paused = !game_paused;
+      if game_paused {
         window.enable_cursor();
+      } else {
+        window.disable_cursor();
+        window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
       }
     }
 
-    // Process events with mouse control state
-    process_events(&mut player, &window, &maze, block_size, mouse_control_enabled, window_width, window_height);
+    // Handle pause menu navigation
+    if game_paused {
+      if window.is_key_pressed(KeyboardKey::KEY_UP) || window.is_key_pressed(KeyboardKey::KEY_W) {
+        selected_menu_option = if selected_menu_option == 0 { 1 } else { 0 };
+      }
+      if window.is_key_pressed(KeyboardKey::KEY_DOWN) || window.is_key_pressed(KeyboardKey::KEY_S) {
+        selected_menu_option = if selected_menu_option == 1 { 0 } else { 1 };
+      }
+      if window.is_key_pressed(KeyboardKey::KEY_ENTER) || window.is_key_pressed(KeyboardKey::KEY_SPACE) {
+        match selected_menu_option {
+          0 => {
+            // Resume game
+            game_paused = false;
+            window.disable_cursor();
+            window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
+          },
+          1 => {
+            // Quit game
+            break;
+          },
+          _ => {}
+        }
+      }
+    }
 
-    // Toggle minimap with M key
-    if window.is_key_pressed(KeyboardKey::KEY_M) {
+    // Process events only when not paused (always enable mouse control)
+    if !game_paused {
+      process_events(&mut player, &window, &maze, block_size, window_width, window_height);
+    }
+
+    // Toggle minimap with M key (only when not paused)
+    if !game_paused && window.is_key_pressed(KeyboardKey::KEY_M) {
       show_minimap = !show_minimap;
     }
 
-    // Always render in 3D mode
-    render_world(&mut framebuffer, &maze, block_size, &player, &texture_cache);
-    render_enemies(&mut framebuffer, &player, &texture_cache);
+    // Toggle performance mode with P key (only when not paused)
+    if !game_paused && window.is_key_pressed(KeyboardKey::KEY_P) {
+      performance_mode = !performance_mode;
+    }
+
+    // Only render game when not paused
+    if !game_paused {
+      // Always render in 3D mode
+      render_world(&mut framebuffer, &maze, block_size, &player, &texture_cache, performance_mode);
+      render_enemies(&mut framebuffer, &player, &texture_cache);
+    }
 
         // Create texture from framebuffer
     if let Ok(framebuffer_texture) = framebuffer.get_texture(&mut window, &raylib_thread) {
@@ -376,17 +526,24 @@ fn main() {
         
         // Draw UI elements on top
         d.draw_text(&format!("FPS: {}", d.get_fps()), 10, 10, 20, Color::WHITE);
-        d.draw_text("ESC: Toggle mouse control", 10, 35, 16, Color::WHITE);
+        d.draw_text("ESC: Pause menu", 10, 35, 16, Color::WHITE);
         d.draw_text("M: Toggle minimap", 10, 55, 16, Color::WHITE);
-        d.draw_text("F11: Toggle fullscreen", 10, 75, 16, Color::WHITE);
-        d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 95, 16, Color::WHITE);
+        d.draw_text("P: Toggle performance mode", 10, 75, 16, Color::WHITE);
+        d.draw_text("F11: Toggle fullscreen", 10, 95, 16, Color::WHITE);
+        d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 115, 16, Color::WHITE);
+        d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 135, 16, Color::WHITE);
         d.draw_text(&format!("Using: {}x{}, FB: {}x{}, Raylib: {}x{}", 
                    window_width, window_height, framebuffer.width, framebuffer.height,
-                   raylib_width, raylib_height), 10, 115, 16, Color::YELLOW);
+                   raylib_width, raylib_height), 10, 155, 16, Color::YELLOW);
         
-        // Render minimap if enabled
-        if show_minimap {
+        // Render minimap if enabled and not paused
+        if show_minimap && !game_paused {
           render_minimap(&mut d, &maze, &player, block_size, window_width, window_height);
+        }
+        
+        // Render pause menu if game is paused
+        if game_paused {
+          render_pause_menu(&mut d, selected_menu_option, window_width, window_height);
         }
     }
   }

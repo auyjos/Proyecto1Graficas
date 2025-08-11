@@ -26,24 +26,22 @@ fn check_collision(maze: &Maze, x: f32, y: f32, block_size: usize) -> bool {
     maze[j][i] != ' ' // Return true if it's a wall
 }
 
-pub fn process_events(player: &mut Player, rl: &RaylibHandle, maze: &Maze, block_size: usize, mouse_enabled: bool, window_width: i32, window_height: i32) {
+pub fn process_events(player: &mut Player, rl: &RaylibHandle, maze: &Maze, block_size: usize, window_width: i32, window_height: i32) {
     const MOVE_SPEED: f32 = 10.0;
     const ROTATION_SPEED: f32 = PI / 10.0;
 
-    // Mouse camera control (only if mouse is enabled)
-    if mouse_enabled {
-        let mouse_pos = rl.get_mouse_position();
-        let center_x = window_width as f32 / 2.0;
-        let center_y = window_height as f32 / 2.0;
-        
-        let mouse_delta_x = mouse_pos.x - center_x;
-        
-        if mouse_delta_x.abs() > 1.0 {
-            player.a += mouse_delta_x * player.mouse_sensitivity;
-            // Reset mouse to center to prevent drift
-            unsafe {
-                raylib::ffi::SetMousePosition(center_x as i32, center_y as i32);
-            }
+    // Mouse camera control (always enabled)
+    let mouse_pos = rl.get_mouse_position();
+    let center_x = window_width as f32 / 2.0;
+    let center_y = window_height as f32 / 2.0;
+    
+    let mouse_delta_x = mouse_pos.x - center_x;
+    
+    if mouse_delta_x.abs() > 1.0 {
+        player.a += mouse_delta_x * player.mouse_sensitivity;
+        // Reset mouse to center to prevent drift
+        unsafe {
+            raylib::ffi::SetMousePosition(center_x as i32, center_y as i32);
         }
     }
 
