@@ -8,6 +8,7 @@ mod maze;
 mod caster;
 mod player;
 mod textures;
+mod audio;
 
 use line::line;
 use maze::{Maze, MazeData, load_maze, load_maze_with_player};
@@ -15,6 +16,7 @@ use caster::{cast_ray, Intersect};
 use framebuffer::Framebuffer;
 use player::{Player, process_events};
 use textures::TextureManager;
+use audio::AudioManager;
 
 use raylib::prelude::*;
 use std::thread;
@@ -642,13 +644,51 @@ fn main() {
   // Initialize texture cache once
   let texture_cache = TextureManager::new(&mut window, &raylib_thread);
 
+  // Initialize audio system
+  let audio_device = match RaylibAudio::init_audio_device() {
+    Ok(audio) => Some(audio),
+    Err(e) => {
+      eprintln!("Warning: Could not initialize audio device: {:?}", e);
+      None
+    }
+  };
+
+  // Load background music
+  let mut background_music: Option<Music> = None;
+  if let Some(ref audio) = audio_device {
+    match audio.new_music("assets/sounds/music/Gats.mp3") {
+      Ok(music) => {
+        background_music = Some(music);
+        println!("Successfully loaded background music");
+      }
+      Err(e) => {
+        eprintln!("Warning: Could not load background music: {:?}", e);
+      }
+    }
+  }
+
+  // Initialize audio manager
+  let mut audio_manager = AudioManager::new();
+
   let mut show_minimap = false; // Toggle for minimap display
   let mut selected_menu_option = 0; // 0 = Resume, 1 = Back to Main Menu  
   let mut performance_mode = false; // Toggle for performance vs quality
+  let mut music_enabled = true; // Toggle for music on/off
 
   window.set_target_fps(60); // Set target FPS to 60 for consistent performance
 
   while !window.window_should_close() {
+    // Update audio stream every frame
+    if let Some(ref music) = background_music {
+      music.update_stream();
+      
+      // Handle looping manually - restart if music finished and should be playing
+      if music_enabled && !music.is_stream_playing() && music.get_time_played() > 0.0 {
+        music.play_stream();
+        music.set_volume(audio_manager.get_music_volume());
+      }
+    }
+
     // Always ensure framebuffer matches current window size
     let current_width = window.get_screen_width();
     let current_height = window.get_screen_height();
@@ -689,6 +729,14 @@ fn main() {
           game_state = GameState::Playing;
           window.disable_cursor();
           window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
+          
+          // Start background music when entering the game
+          if let Some(ref music) = background_music {
+            if music_enabled {
+              music.play_stream();
+              music.set_volume(audio_manager.get_music_volume());
+            }
+          }
         }
         
         if window.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
@@ -707,6 +755,12 @@ fn main() {
         if window.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
           game_state = GameState::Paused;
           window.enable_cursor();
+          // Pause music when game is paused
+          if let Some(ref music) = background_music {
+            if music_enabled && music.is_stream_playing() {
+              music.pause_stream();
+            }
+          }
         }
 
         // Process player input and movement
@@ -730,6 +784,39 @@ fn main() {
           performance_mode = !performance_mode;
         }
 
+        // Toggle music with N key
+        if window.is_key_pressed(KeyboardKey::KEY_N) {
+          music_enabled = !music_enabled;
+          if let Some(ref music) = background_music {
+            if music_enabled {
+              if !music.is_stream_playing() {
+                music.play_stream();
+                music.set_volume(audio_manager.get_music_volume());
+              }
+            } else {
+              music.pause_stream();
+            }
+          }
+        }
+
+        // Volume controls
+        if window.is_key_down(KeyboardKey::KEY_EQUAL) || window.is_key_down(KeyboardKey::KEY_KP_ADD) {
+          let current_volume = audio_manager.get_music_volume();
+          let new_volume = (current_volume + 0.01).min(1.0);
+          audio_manager.set_music_volume(new_volume);
+          if let Some(ref music) = background_music {
+            music.set_volume(new_volume);
+          }
+        }
+        if window.is_key_down(KeyboardKey::KEY_MINUS) || window.is_key_down(KeyboardKey::KEY_KP_SUBTRACT) {
+          let current_volume = audio_manager.get_music_volume();
+          let new_volume = (current_volume - 0.01).max(0.0);
+          audio_manager.set_music_volume(new_volume);
+          if let Some(ref music) = background_music {
+            music.set_volume(new_volume);
+          }
+        }
+
         // Render the world
         if let Some(ref data) = maze_data {
           render_world(&mut framebuffer, &data.maze, block_size, &player, &texture_cache, performance_mode);
@@ -748,9 +835,12 @@ fn main() {
           d.draw_text("ESC: Pause menu", 10, 35, 16, Color::WHITE);
           d.draw_text("M: Toggle minimap", 10, 55, 16, Color::WHITE);
           d.draw_text("P: Toggle performance mode", 10, 75, 16, Color::WHITE);
-          d.draw_text("F11: Toggle fullscreen", 10, 95, 16, Color::WHITE);
-          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 115, 16, Color::WHITE);
-          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 135, 16, Color::WHITE);
+          d.draw_text("N: Toggle music", 10, 95, 16, Color::WHITE);
+          d.draw_text("+/-: Volume control", 10, 115, 16, Color::WHITE);
+          d.draw_text("F11: Toggle fullscreen", 10, 135, 16, Color::WHITE);
+          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 155, 16, Color::WHITE);
+          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 175, 16, Color::WHITE);
+          d.draw_text(&format!("Music: {} (Vol: {:.0}%)", if music_enabled { "ON" } else { "OFF" }, audio_manager.get_music_volume() * 100.0), 10, 195, 16, Color::WHITE);
           
           // Render minimap if enabled
           if let Some(ref data) = maze_data {
@@ -777,12 +867,22 @@ fn main() {
               game_state = GameState::Playing;
               window.disable_cursor();
               window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
+              // Resume music when game resumes
+              if let Some(ref music) = background_music {
+                if music_enabled {
+                  music.resume_stream();
+                }
+              }
             }
             1 => {
               // Back to start screen
               game_state = GameState::StartScreen;
               maze_data = None;
               window.enable_cursor();
+              // Stop music when returning to main menu
+              if let Some(ref music) = background_music {
+                music.stop_stream();
+              }
             }
             _ => {}
           }
@@ -793,6 +893,12 @@ fn main() {
           game_state = GameState::Playing;
           window.disable_cursor();
           window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
+          // Resume music when game resumes
+          if let Some(ref music) = background_music {
+            if music_enabled {
+              music.resume_stream();
+            }
+          }
         }
 
         // Render paused game background
@@ -820,6 +926,10 @@ fn main() {
           game_state = GameState::StartScreen;
           maze_data = None;
           window.enable_cursor();
+          // Stop music when returning to main menu
+          if let Some(ref music) = background_music {
+            music.stop_stream();
+          }
         }
 
         if window.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
