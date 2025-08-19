@@ -185,14 +185,14 @@ fn render_world(
 
   // Draw sky and floor - use simple or detailed based on performance mode
   if performance_mode {
-    // Simple, fast sky and floor for performance mode
-    framebuffer.set_current_color(Color::SKYBLUE);
+    // Simple, fast sky and floor for performance mode - Reddish Berserk tone
+    framebuffer.set_current_color(Color::new(120, 40, 40, 255)); // Dark reddish sky
     for i in 0..framebuffer.width {
       for j in 0..(framebuffer.height / 2) {
         framebuffer.set_pixel_with_depth(i, j, 10000.0);
       }
     }
-    framebuffer.set_current_color(Color::GAINSBORO);
+    framebuffer.set_current_color(Color::new(30, 8, 8, 255)); // Dark red floor
     for i in 0..framebuffer.width {
       for j in (framebuffer.height / 2)..framebuffer.height {
         framebuffer.set_pixel_with_depth(i, j, 10000.0);
@@ -205,10 +205,11 @@ fn render_world(
     
     for j in 0..(framebuffer.height / 2) {
       let gradient_factor = j as f32 / (framebuffer.height as f32 / 2.0);
+      // Reddish Berserk-style sky gradient - dark crimson to lighter red
       sky_colors.push(Color::new(
-        (30.0 + gradient_factor * 105.0) as u8,
-        (30.0 + gradient_factor * 176.0) as u8,
-        (60.0 + gradient_factor * 175.0) as u8,
+        (60.0 + gradient_factor * 120.0) as u8,  // Red component: 60-180
+        (20.0 + gradient_factor * 40.0) as u8,   // Green component: 20-60  
+        (20.0 + gradient_factor * 30.0) as u8,   // Blue component: 20-50
         255
       ));
     }
@@ -216,10 +217,11 @@ fn render_world(
     for j in 0..(framebuffer.height / 2) {
       let distance_from_center = j as f32;
       let fog_factor = (distance_from_center / (framebuffer.height as f32 / 2.0)).min(1.0);
+      // Black to dark red gradient for Berserk aesthetic
       floor_colors.push(Color::new(
-        (40.0 + fog_factor * 40.0) as u8,
-        (35.0 + fog_factor * 35.0) as u8,
-        (30.0 + fog_factor * 30.0) as u8,
+        (10.0 + fog_factor * 50.0) as u8,  // Red component: 10-60
+        (5.0 + fog_factor * 10.0) as u8,   // Green component: 5-15
+        (5.0 + fog_factor * 10.0) as u8,   // Blue component: 5-15
         255
       ));
     }
@@ -258,9 +260,14 @@ fn render_world(
     let stake_bottom = (hh + (stake_height / 2.0)) as usize;
 
     for y in stake_top..stake_bottom {
-      let ty = (y as f32 - stake_top as f32) / (stake_bottom as f32 - stake_top as f32) * 128.0;
+      // Calculate texture Y coordinate as a ratio (0.0 to 1.0) and scale by actual texture height
+      let ty_ratio = (y as f32 - stake_top as f32) / (stake_bottom as f32 - stake_top as f32);
+      let ty = (ty_ratio * 127.0).max(0.0).min(127.0) as u32; // Clamp to valid range
+      
+      // Ensure tx is also within valid bounds
+      let tx = (intersect.tx as u32).min(127);
 
-      let mut color = texture_cache.get_pixel_color(intersect.impact, intersect.tx as u32, ty as u32);
+      let mut color = texture_cache.get_pixel_color(intersect.impact, tx, ty);
       
       // Only apply fog in quality mode for better performance
       if !performance_mode && distance_to_wall > 200.0 {

@@ -63,7 +63,8 @@ pub fn cast_ray(
         maxhit = hitx
       } 
 
-      let tx = (maxhit * 128) / block_size;
+      // Fix texture coordinate calculation with proper floating point math
+      let tx = ((maxhit as f32 * 127.0) / block_size as f32) as usize;
 
       return Intersect{
         distance: d,

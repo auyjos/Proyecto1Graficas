@@ -14,21 +14,45 @@ impl TextureManager {
         let mut images = HashMap::new();
         let mut textures = HashMap::new();
 
-        // Map characters to texture file paths
+        // Map characters to texture file paths - Enhanced Berserk style
         let texture_files = vec![
-            ('+', "assets/wall4.png"),
-            ('-', "assets/wall2.png"),
-            ('|', "assets/wall1.png"),
-            ('g', "assets/wall5.png"),
-            ('#', "assets/wall3.png"), // default/fallback
-            ('e', "assets/sprite1.png"),
+            ('+', "assets/textures/elements/Elements_02-128x128.png"),
+            ('-', "assets/textures/cloth/Cloth_02-128x128.png"),
+            ('|', "assets/textures/cloth/Cloth_22-128x128.png"),
+            ('g', "assets/textures/large_door.png"),
+            ('#', "assets/textures/cloth/Cloth_02-128x128.png"), // default/fallback
+            ('e', "assets/sprite1.png"), // Keep original sprite for now
         ];
 
         for (ch, path) in texture_files {
-            let image = Image::load_image(path).expect(&format!("Failed to load image {}", path));
-            let texture = rl.load_texture(thread, path).expect(&format!("Failed to load texture {}", path));
-            images.insert(ch, image);
-            textures.insert(ch, texture);
+            println!("Attempting to load texture: {}", path);
+            match Image::load_image(path) {
+                Ok(image) => {
+                    match rl.load_texture(thread, path) {
+                        Ok(texture) => {
+                            println!("Successfully loaded texture: {} ({}x{})", path, image.width, image.height);
+                            images.insert(ch, image);
+                            textures.insert(ch, texture);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to load texture {}: {:?}", path, e);
+                            // Fallback to a solid color texture
+                            let fallback_image = Image::gen_image_color(64, 64, Color::GRAY);
+                            let fallback_texture = rl.load_texture_from_image(thread, &fallback_image).expect("Failed to create fallback texture");
+                            images.insert(ch, fallback_image);
+                            textures.insert(ch, fallback_texture);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to load image {}: {:?}", path, e);
+                    // Fallback to a solid color texture
+                    let fallback_image = Image::gen_image_color(64, 64, Color::RED);
+                    let fallback_texture = rl.load_texture_from_image(thread, &fallback_image).expect("Failed to create fallback texture");
+                    images.insert(ch, fallback_image);
+                    textures.insert(ch, fallback_texture);
+                }
+            }
         }
 
         TextureManager { images, textures }
@@ -38,8 +62,10 @@ impl TextureManager {
         if let Some(image) = self.images.get(&ch) {
             let x = tx.min(image.width as u32 - 1) as i32;
             let y = ty.min(image.height as u32 - 1) as i32;
+            
             get_pixel_color(image, x, y)
         } else {
+            println!("Warning: No texture found for character '{}'", ch);
             Color::WHITE
         }
     }
@@ -57,20 +83,37 @@ fn get_pixel_color(image: &Image, x: i32, y: i32) -> Color {
         return Color::WHITE;
     }
 
-    let x = x as usize;
-    let y = y as usize;
+    let x = (x as usize).min(width - 1);
+    let y = (y as usize).min(height - 1);
 
-    let data_len = width * height * 4;
+    // Much safer bounds checking
+    let pixel_index = y * width + x;
+    let byte_index = pixel_index * 4; // RGBA = 4 bytes per pixel
+    let total_bytes = width * height * 4;
 
     unsafe {
-        let data = slice::from_raw_parts(image.data as *const u8, data_len);
-
-        let idx = (y * width + x) * 4;
-
-        if idx + 3 >= data_len {
+        // Null pointer check
+        if image.data.is_null() {
             return Color::WHITE;
         }
-
-        Color::new(data[idx], data[idx + 1], data[idx + 2], data[idx + 3])
+        
+        // Bounds check before creating slice
+        if byte_index + 3 >= total_bytes {
+            return Color::WHITE;
+        }
+        
+        let data = slice::from_raw_parts(image.data as *const u8, total_bytes);
+        
+        // Final safety check
+        if byte_index + 3 < data.len() {
+            Color::new(
+                data[byte_index],     // R
+                data[byte_index + 1], // G
+                data[byte_index + 2], // B
+                data[byte_index + 3], // A
+            )
+        } else {
+            Color::WHITE
+        }
     }
 }
