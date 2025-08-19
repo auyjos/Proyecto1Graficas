@@ -23,9 +23,52 @@ use std::thread;
 use std::time::Duration;
 use std::f32::consts::PI;
 mod enemy;
-use enemy::{Enemy};
+use enemy::{Enemy, AnimationState};
 
 const TRANSPARENT_COLOR: Color = Color::new(152, 0, 136, 255);
+
+// Function to check if a color should be treated as transparent
+fn is_transparent_color(color: Color) -> bool {
+    // Check for exact transparent color match
+    if color == TRANSPARENT_COLOR {
+        return true;
+    }
+    
+    // Check for alpha transparency
+    if color.a < 128 {
+        return true;
+    }
+    
+    // Specific check for your sprite sheet's background color
+    // Looking at your sprite, the background appears to be a dark gray around RGB(64, 64, 64)
+    // Let's check for colors in that range
+    
+    // Dark gray background (around 50-85 range for all components)
+    if color.r >= 50 && color.r <= 85 &&
+       color.g >= 50 && color.g <= 85 &&
+       color.b >= 50 && color.b <= 85 {
+        return true;
+    }
+    
+    // Also check for slightly lighter grays (75-115 range)
+    if color.r >= 75 && color.r <= 115 &&
+       color.g >= 75 && color.g <= 115 &&
+       color.b >= 75 && color.b <= 115 {
+        return true;
+    }
+    
+    // Check for very dark colors (near black)
+    if color.r < 25 && color.g < 25 && color.b < 25 {
+        return true;
+    }
+    
+    // Check for very light colors (near white)
+    if color.r > 230 && color.g > 230 && color.b > 230 {
+        return true;
+    }
+    
+    false
+}
 
 #[derive(PartialEq)]
 enum GameState {
@@ -59,12 +102,49 @@ const AVAILABLE_MAPS: &[MapInfo] = &[
     },
 ];
 
+// Function to check if there's a wall between two points (line of sight check)
+fn has_line_of_sight(from: Vector2, to: Vector2, maze: &Maze, block_size: usize) -> bool {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    
+    // Check points along the line from player to enemy
+    let steps = (distance / (block_size as f32 * 0.25)) as i32; // Check every quarter block
+    
+    for i in 0..=steps {
+        let t = if steps == 0 { 0.0 } else { i as f32 / steps as f32 };
+        let check_x = from.x + dx * t;
+        let check_y = from.y + dy * t;
+        
+        // Convert to maze coordinates
+        let maze_x = (check_x / block_size as f32) as usize;
+        let maze_y = (check_y / block_size as f32) as usize;
+        
+        // Check if this position is inside the maze bounds
+        if maze_y < maze.len() && maze_x < maze[0].len() {
+            // If we hit a wall, line of sight is blocked
+            if maze[maze_y][maze_x] != ' ' {
+                return false;
+            }
+        }
+    }
+    
+    true // No walls found along the line
+}
+
 fn draw_sprite(
     framebuffer: &mut Framebuffer,
     player: &Player,
     enemy: &Enemy,
-    texture_manager: &TextureManager
+    texture_manager: &TextureManager,
+    maze: &Maze,
+    block_size: usize,
 ) {
+    // First check if there's line of sight between player and enemy
+    if !has_line_of_sight(player.pos, enemy.pos, maze, block_size) {
+        return; // Enemy is behind a wall, don't draw
+    }
+
     // Calculate angle from player to enemy
     let sprite_a = (enemy.pos.y - player.pos.y).atan2(enemy.pos.x - player.pos.x);
 
@@ -109,14 +189,40 @@ fn draw_sprite(
 
     for x in start_x..end_x {
         for y in start_y..end_y {
-            // Map screen pixel to texture coordinates (assuming 128x128 texture)
-            let tx = ((x - start_x) * 128 / sprite_size_usize) as u32;
-            let ty = ((y - start_y) * 128 / sprite_size_usize) as u32;
+            // Determine which sprite frame to use based on animation state and frame
+            let (frame_x, frame_y) = match enemy.animation_state {
+                AnimationState::Idle => (enemy.current_frame, 0),
+                AnimationState::Walking => (enemy.current_frame, 1), 
+                AnimationState::Attack => (enemy.current_frame, 2),
+                AnimationState::Death => (enemy.current_frame, 2), // Use attack row for death for now
+            };
 
-            let color = texture_manager.get_pixel_color('e', tx, ty);
+            // Check if we have an animated sprite sheet first
+            let color = if texture_manager.has_sprite_sheet('a') {
+                // Get frame size from sprite sheet
+                let (frame_width, frame_height) = texture_manager.get_sprite_frame_size('a').unwrap_or((32, 32));
+                
+                // Map screen pixel to texture coordinates within the frame
+                let tx = ((x - start_x) * frame_width as usize / sprite_size_usize) as u32;
+                let ty = ((y - start_y) * frame_height as usize / sprite_size_usize) as u32;
+                
+                // Handle sprite flipping if facing left
+                let final_tx = if enemy.facing_left {
+                    frame_width - 1 - tx.min(frame_width - 1)
+                } else {
+                    tx.min(frame_width - 1)
+                };
+                
+                texture_manager.get_sprite_frame_color('a', frame_x, frame_y, final_tx, ty.min(frame_height - 1))
+            } else {
+                // Fallback to single sprite texture
+                let tx = ((x - start_x) * 128 / sprite_size_usize) as u32;
+                let ty = ((y - start_y) * 128 / sprite_size_usize) as u32;
+                texture_manager.get_pixel_color('e', tx, ty)
+            };
 
             // Skip transparent pixels
-            if color != TRANSPARENT_COLOR {
+            if !is_transparent_color(color) {
                 // Check depth buffer - only render if sprite is closer than existing pixel
                 let current_depth = framebuffer.get_depth(x as u32, y as u32);
                 if sprite_d < current_depth {
@@ -289,15 +395,33 @@ fn render_world(
   }
 }
 
-fn render_enemies(framebuffer: &mut Framebuffer, player: &Player, texture_cache: &TextureManager) {
-  let enemies = vec![
-    Enemy::new(250.0, 250.0, 'e'),
-    // Enemy::new(450.0, 450.0, 'e'),
-    // Enemy::new(650.0, 650.0, 'e'),
-  ];
+fn render_enemies(framebuffer: &mut Framebuffer, player: &Player, enemies: &mut Vec<Enemy>, texture_cache: &TextureManager, delta_time: f32, maze: &Maze, block_size: usize) {
+  // Remove enemies that should despawn
+  enemies.retain(|enemy| !enemy.should_despawn());
 
-  for enemy in &enemies {
-    draw_sprite(framebuffer, &player, enemy, texture_cache);
+  for enemy in enemies.iter_mut() {
+    // Update animation and movement
+    enemy.update(delta_time, player.pos, maze, block_size);
+    
+    // Skip AI updates if enemy is dead
+    if enemy.is_dead {
+      draw_sprite(framebuffer, &player, enemy, texture_cache, maze, block_size);
+      continue;
+    }
+    
+    // Enhanced AI based on distance to player - only for combat, movement is handled in enemy.update()
+    let distance_to_player = ((player.pos.x - enemy.pos.x).powi(2) + (player.pos.y - enemy.pos.y).powi(2)).sqrt();
+    
+    if distance_to_player < 80.0 {
+      // Very close - kill the enemy!
+      enemy.kill();
+    } else if distance_to_player < 150.0 {
+      // Close - attack animation (override movement animation)
+      enemy.set_animation(AnimationState::Attack);
+    }
+    // Note: Walking and Idle animations are now handled by the movement system
+    
+    draw_sprite(framebuffer, &player, enemy, texture_cache, maze, block_size);
   }
 }
 
@@ -305,6 +429,7 @@ fn render_minimap(
   d: &mut RaylibDrawHandle,
   maze: &Maze,
   player: &Player,
+  enemies: &Vec<Enemy>,
   block_size: usize,
   screen_width: i32,
   screen_height: i32,
@@ -351,7 +476,42 @@ fn render_minimap(
     }
   }
   
-  // Draw player position as a red dot in the center
+  // Draw enemies on minimap
+  for enemy in enemies.iter() {
+    // Skip dead enemies
+    if enemy.is_dead {
+      continue;
+    }
+    
+    // Calculate enemy position relative to player
+    let enemy_maze_x = (enemy.pos.x / block_size as f32) as i32;
+    let enemy_maze_y = (enemy.pos.y / block_size as f32) as i32;
+    
+    let dx = enemy_maze_x - player_maze_x;
+    let dy = enemy_maze_y - player_maze_y;
+    
+    // Only draw if enemy is within minimap bounds
+    if dx.abs() < half_cells && dy.abs() < half_cells {
+      let enemy_pixel_x = minimap_x + (dx + half_cells) * minimap_scale + minimap_scale / 2;
+      let enemy_pixel_y = minimap_y + (dy + half_cells) * minimap_scale + minimap_scale / 2;
+      
+      // Different colors for different enemy types
+      let enemy_color = match enemy.movement_pattern {
+        enemy::MovementPattern::Stationary => Color::ORANGE,    // Guards
+        enemy::MovementPattern::Patrol => Color::BLUE,         // Patrol enemies
+        enemy::MovementPattern::Wander => Color::GREEN,        // Wandering enemies
+        enemy::MovementPattern::Chase => Color::PURPLE,        // Chasing enemies
+      };
+      
+      // Draw enemy as a smaller circle
+      d.draw_circle(enemy_pixel_x, enemy_pixel_y, 2.0, enemy_color);
+      
+      // Add a border for better visibility
+      d.draw_circle_lines(enemy_pixel_x, enemy_pixel_y, 2.0, Color::WHITE);
+    }
+  }
+  
+  // Draw player position as a red dot in the center (draw last so it's on top)
   let player_pixel_x = minimap_x + minimap_size / 2;
   let player_pixel_y = minimap_y + minimap_size / 2;
   d.draw_circle(player_pixel_x, player_pixel_y, 3.0, Color::RED);
@@ -369,6 +529,26 @@ fn render_minimap(
   
   // Add minimap label
   d.draw_text("MINIMAP", minimap_x, minimap_y - 25, 16, Color::WHITE);
+  
+  // Add enemy legend
+  let legend_x = minimap_x + minimap_size + 10;
+  let legend_y = minimap_y;
+  
+  d.draw_text("Enemies:", legend_x, legend_y, 14, Color::WHITE);
+  d.draw_circle(legend_x + 10, legend_y + 20, 3.0, Color::ORANGE);
+  d.draw_text("Guards", legend_x + 20, legend_y + 15, 12, Color::WHITE);
+  
+  d.draw_circle(legend_x + 10, legend_y + 35, 3.0, Color::BLUE);
+  d.draw_text("Patrol", legend_x + 20, legend_y + 30, 12, Color::WHITE);
+  
+  d.draw_circle(legend_x + 10, legend_y + 50, 3.0, Color::GREEN);
+  d.draw_text("Wander", legend_x + 20, legend_y + 45, 12, Color::WHITE);
+  
+  d.draw_circle(legend_x + 10, legend_y + 65, 3.0, Color::PURPLE);
+  d.draw_text("Chase", legend_x + 20, legend_y + 60, 12, Color::WHITE);
+  
+  d.draw_circle(legend_x + 10, legend_y + 85, 3.0, Color::RED);
+  d.draw_text("You", legend_x + 20, legend_y + 80, 12, Color::WHITE);
 }
 
 fn render_pause_menu(
@@ -645,6 +825,34 @@ fn main() {
     mouse_sensitivity: 0.01,
   };
 
+  // Initialize persistent enemy list with different movement patterns
+  let mut enemies = vec![
+    // Patrol enemies
+    Enemy::new_patrol(250.0, 250.0, 'a', 450.0, 250.0),  // Horizontal patrol 1
+    Enemy::new_patrol(350.0, 550.0, 'a', 350.0, 350.0),  // Vertical patrol 1
+    Enemy::new_patrol(550.0, 150.0, 'a', 750.0, 150.0),  // Horizontal patrol 2
+    Enemy::new_patrol(150.0, 300.0, 'a', 150.0, 500.0),  // Vertical patrol 2
+    Enemy::new_patrol(650.0, 450.0, 'a', 850.0, 450.0),  // Horizontal patrol 3
+    
+    // Wandering enemies
+    Enemy::new_wander(450.0, 450.0, 'a', 80.0),          // Wandering enemy 1
+    Enemy::new_wander(300.0, 700.0, 'a', 60.0),          // Wandering enemy 2
+    Enemy::new_wander(700.0, 200.0, 'a', 90.0),          // Wandering enemy 3
+    Enemy::new_wander(500.0, 600.0, 'a', 70.0),          // Wandering enemy 4
+    
+    // Chasing enemies - more aggressive
+    Enemy::new_chase(650.0, 350.0, 'a'),                 // Chasing enemy 1
+    Enemy::new_chase(200.0, 600.0, 'a'),                 // Chasing enemy 2
+    Enemy::new_chase(750.0, 550.0, 'a'),                 // Chasing enemy 3
+    
+    // Stationary guards at key positions
+    Enemy::new(150.0, 550.0, 'a'),                       // Guard 1
+    Enemy::new(450.0, 150.0, 'a'),                       // Guard 2
+    Enemy::new(750.0, 350.0, 'a'),                       // Guard 3
+    Enemy::new(350.0, 750.0, 'a'),                       // Guard 4
+    Enemy::new(550.0, 500.0, 'a'),                       // Guard 5
+  ];
+
   // Start with cursor enabled for menu navigation
   window.enable_cursor();
 
@@ -684,7 +892,14 @@ fn main() {
 
   window.set_target_fps(60); // Set target FPS to 60 for consistent performance
 
+  let mut last_time = unsafe { raylib::ffi::GetTime() } as f32;
+
   while !window.window_should_close() {
+    // Calculate delta time
+    let current_time = unsafe { raylib::ffi::GetTime() } as f32;
+    let delta_time = current_time - last_time;
+    last_time = current_time;
+
     // Update audio stream every frame
     if let Some(ref music) = background_music {
       music.update_stream();
@@ -827,7 +1042,7 @@ fn main() {
         // Render the world
         if let Some(ref data) = maze_data {
           render_world(&mut framebuffer, &data.maze, block_size, &player, &texture_cache, performance_mode);
-          render_enemies(&mut framebuffer, &player, &texture_cache);
+          render_enemies(&mut framebuffer, &player, &mut enemies, &texture_cache, delta_time, &data.maze, block_size);
         }
 
         // Create texture from framebuffer and render
@@ -838,21 +1053,23 @@ fn main() {
           d.draw_texture_ex(&framebuffer_texture, Vector2::zero(), 0.0, 1.0, Color::WHITE);
           
           // Draw UI elements
+          let alive_enemies = enemies.iter().filter(|e| !e.is_dead).count();
           d.draw_text(&format!("FPS: {}", d.get_fps()), 10, 10, 20, Color::WHITE);
-          d.draw_text("ESC: Pause menu", 10, 35, 16, Color::WHITE);
-          d.draw_text("M: Toggle minimap", 10, 55, 16, Color::WHITE);
-          d.draw_text("P: Toggle performance mode", 10, 75, 16, Color::WHITE);
-          d.draw_text("N: Toggle music", 10, 95, 16, Color::WHITE);
-          d.draw_text("+/-: Volume control", 10, 115, 16, Color::WHITE);
-          d.draw_text("F11: Toggle fullscreen", 10, 135, 16, Color::WHITE);
-          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 155, 16, Color::WHITE);
-          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 175, 16, Color::WHITE);
-          d.draw_text(&format!("Music: {} (Vol: {:.0}%)", if music_enabled { "ON" } else { "OFF" }, audio_manager.get_music_volume() * 100.0), 10, 195, 16, Color::WHITE);
+          d.draw_text(&format!("Enemies: {}", alive_enemies), 10, 35, 18, Color::YELLOW);
+          d.draw_text("ESC: Pause menu", 10, 55, 16, Color::WHITE);
+          d.draw_text("M: Toggle minimap", 10, 75, 16, Color::WHITE);
+          d.draw_text("P: Toggle performance mode", 10, 95, 16, Color::WHITE);
+          d.draw_text("N: Toggle music", 10, 115, 16, Color::WHITE);
+          d.draw_text("+/-: Volume control", 10, 135, 16, Color::WHITE);
+          d.draw_text("F11: Toggle fullscreen", 10, 155, 16, Color::WHITE);
+          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 175, 16, Color::WHITE);
+          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 195, 16, Color::WHITE);
+          d.draw_text(&format!("Music: {} (Vol: {:.0}%)", if music_enabled { "ON" } else { "OFF" }, audio_manager.get_music_volume() * 100.0), 10, 215, 16, Color::WHITE);
           
           // Render minimap if enabled
           if let Some(ref data) = maze_data {
             if show_minimap {
-              render_minimap(&mut d, &data.maze, &player, block_size, window_width, window_height);
+              render_minimap(&mut d, &data.maze, &player, &enemies, block_size, window_width, window_height);
             }
           }
         }
@@ -911,7 +1128,7 @@ fn main() {
         // Render paused game background
         if let Some(ref data) = maze_data {
           render_world(&mut framebuffer, &data.maze, block_size, &player, &texture_cache, performance_mode);
-          render_enemies(&mut framebuffer, &player, &texture_cache);
+          render_enemies(&mut framebuffer, &player, &mut enemies, &texture_cache, delta_time, &data.maze, block_size);
         }
 
         // Create texture from framebuffer and render with pause overlay

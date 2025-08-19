@@ -7,6 +7,16 @@ use std::slice;
 pub struct TextureManager {
     images: HashMap<char, Image>,       // Store images for pixel access
     textures: HashMap<char, Texture2D>, // Store GPU textures for rendering
+    sprite_sheets: HashMap<char, SpriteSheet>, // Store sprite sheet data
+}
+
+#[derive(Clone)]
+pub struct SpriteSheet {
+    pub image: Image,
+    pub frame_width: u32,
+    pub frame_height: u32,
+    pub columns: u32,
+    pub rows: u32,
 }
 
 impl TextureManager {
@@ -55,7 +65,38 @@ impl TextureManager {
             }
         }
 
-        TextureManager { images, textures }
+        // Initialize sprite sheets
+        let mut sprite_sheets = HashMap::new();
+        
+        // Load sprite sheet for animated enemies (assuming 4x3 grid: 4 columns, 3 rows)
+        // Save your sprite sheet as "assets/sprite_sheet.png" 
+        println!("Attempting to load sprite sheet: assets/sprite_sheet.png");
+        if let Ok(sprite_image) = Image::load_image("assets/sprite_sheet.png") {
+            println!("Successfully loaded sprite_sheet.png ({}x{})", sprite_image.width, sprite_image.height);
+            let sprite_sheet = SpriteSheet {
+                frame_width: sprite_image.width as u32 / 4, // 4 columns
+                frame_height: sprite_image.height as u32 / 3, // 3 rows  
+                columns: 4,
+                rows: 3,
+                image: sprite_image,
+            };
+            println!("Created sprite sheet with frame size: {}x{}", sprite_sheet.frame_width, sprite_sheet.frame_height);
+            sprite_sheets.insert('a', sprite_sheet); // 'a' for animated sprite
+        } else {
+            println!("Warning: Could not load sprite_sheet.png - using fallback for animations");
+            // Create a simple fallback sprite sheet
+            let fallback_sprite = Image::gen_image_color(128, 96, Color::BLUE); // 4x3 * 32x32 frames
+            let sprite_sheet = SpriteSheet {
+                frame_width: 32,
+                frame_height: 32,
+                columns: 4,
+                rows: 3,
+                image: fallback_sprite,
+            };
+            sprite_sheets.insert('a', sprite_sheet);
+        }
+
+        TextureManager { images, textures, sprite_sheets }
     }
 
     pub fn get_pixel_color(&self, ch: char, tx: u32, ty: u32) -> Color {
@@ -72,6 +113,27 @@ impl TextureManager {
 
     pub fn get_texture(&self, ch: char) -> Option<&Texture2D> {
         self.textures.get(&ch)
+    }
+
+    pub fn get_sprite_frame_color(&self, ch: char, frame_x: usize, frame_y: usize, tx: u32, ty: u32) -> Color {
+        if let Some(sprite_sheet) = self.sprite_sheets.get(&ch) {
+            // Calculate the pixel position within the sprite sheet
+            let pixel_x = (frame_x as u32 * sprite_sheet.frame_width + tx).min(sprite_sheet.image.width as u32 - 1);
+            let pixel_y = (frame_y as u32 * sprite_sheet.frame_height + ty).min(sprite_sheet.image.height as u32 - 1);
+            
+            get_pixel_color(&sprite_sheet.image, pixel_x as i32, pixel_y as i32)
+        } else {
+            // Fallback to regular texture if no sprite sheet found
+            self.get_pixel_color(ch, tx, ty)
+        }
+    }
+
+    pub fn has_sprite_sheet(&self, ch: char) -> bool {
+        self.sprite_sheets.contains_key(&ch)
+    }
+
+    pub fn get_sprite_frame_size(&self, ch: char) -> Option<(u32, u32)> {
+        self.sprite_sheets.get(&ch).map(|sheet| (sheet.frame_width, sheet.frame_height))
     }
 }
 
