@@ -24,14 +24,15 @@ impl TextureManager {
         let mut images = HashMap::new();
         let mut textures = HashMap::new();
 
-        // Map characters to texture file paths - Enhanced Berserk style
-        let texture_files = vec![
-            ('+', "assets/textures/elements/Elements_02-128x128.png"),
-            ('-', "assets/textures/cloth/Cloth_02-128x128.png"),
-            ('|', "assets/textures/cloth/Cloth_22-128x128.png"),
-            ('g', "assets/textures/large_door.png"),
-            ('#', "assets/textures/cloth/Cloth_02-128x128.png"), // default/fallback
-            ('e', "assets/sprite1.png"), // Keep original sprite for now
+      
+          let texture_files = vec![
+            // Dark medieval stone for main structure
+            ('+', "assets/textures/elements/Elements_06-128x128_rgba.png"), // Dark stone corners
+            ('-', "assets/textures/metals/Metal_07-128x128_rgba.png"),      // Rusty metal horizontals
+            ('|', "assets/textures/elements/Elements_08-128x128_rgba.png"), // Weathered stone verticals
+            ('g', "assets/textures/large_door_rgba.png"),                   // Large imposing door
+            ('#', "assets/Horror_Metal_03-128x128_rgba.png"),               // Horror metal for variety
+            ('e', "assets/sprite1_rgba.png"),                               // Enemy sprite
         ];
 
         for (ch, path) in texture_files {
@@ -70,9 +71,9 @@ impl TextureManager {
         
         // Load sprite sheet for animated enemies (assuming 4x3 grid: 4 columns, 3 rows)
         // Save your sprite sheet as "assets/sprite_sheet.png" 
-        println!("Attempting to load sprite sheet: assets/sprite_sheet.png");
-        if let Ok(sprite_image) = Image::load_image("assets/sprite_sheet.png") {
-            println!("Successfully loaded sprite_sheet.png ({}x{})", sprite_image.width, sprite_image.height);
+        println!("Attempting to load sprite sheet: assets/sprite_sheet_rgba.png");
+        if let Ok(sprite_image) = Image::load_image("assets/sprite_sheet_rgba.png") {
+            println!("Successfully loaded sprite_sheet_rgba.png ({}x{})", sprite_image.width, sprite_image.height);
             let sprite_sheet = SpriteSheet {
                 frame_width: sprite_image.width as u32 / 4, // 4 columns
                 frame_height: sprite_image.height as u32 / 3, // 3 rows  
@@ -83,7 +84,7 @@ impl TextureManager {
             println!("Created sprite sheet with frame size: {}x{}", sprite_sheet.frame_width, sprite_sheet.frame_height);
             sprite_sheets.insert('a', sprite_sheet); // 'a' for animated sprite
         } else {
-            println!("Warning: Could not load sprite_sheet.png - using fallback for animations");
+            println!("Warning: Could not load sprite_sheet_rgba.png - using fallback for animations");
             // Create a simple fallback sprite sheet
             let fallback_sprite = Image::gen_image_color(128, 96, Color::BLUE); // 4x3 * 32x32 frames
             let sprite_sheet = SpriteSheet {
