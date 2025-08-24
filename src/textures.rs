@@ -30,8 +30,8 @@ impl TextureManager {
           let texture_files = vec![
             // Dark medieval stone for main structure
             ('+', "assets/textures/elements/Elements_05-128x128_rgba.png"), // Dark stone corners
-            ('-', "assets/textures/metals/photorealistic/ptpmetal_rgba.png"),      // Rusty metal horizontals
-            ('|', "assets/textures/elements/Elements_08-128x128_rgba.png"), // Weathered stone verticals
+            ('-', "assets/textures/elements/Elements_03-128x128_rgba.png"),      // Rusty metal horizontals
+            ('|', "assets/textures/elements/Elements_06-128x128_rgba.png"), // Weathered stone verticals
             ('g', "assets/textures/elements/Elements_10-128x128_rgba.png"),                   // Large imposing door
             ('#', "assets/elements/Elements_02-128x128_rgba.png"),               // Horror metal for variety
             ('e', "assets/sprite1_rgba.png"),                               // Enemy sprite

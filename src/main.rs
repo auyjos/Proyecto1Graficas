@@ -496,10 +496,7 @@ fn render_enemies(framebuffer: &mut Framebuffer, player: &Player, enemies: &mut 
     // Enhanced AI based on distance to player - only for combat, movement is handled in enemy.update()
     let distance_to_player = ((player.pos.x - enemy.pos.x).powi(2) + (player.pos.y - enemy.pos.y).powi(2)).sqrt();
     
-    if distance_to_player < 80.0 {
-      // Very close - kill the enemy!
-      enemy.kill();
-    } else if distance_to_player < 150.0 {
+    if distance_to_player < 150.0 {
       // Close - attack animation (override movement animation)
       enemy.set_animation(AnimationState::Attack);
     }
