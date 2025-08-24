@@ -1018,16 +1018,25 @@ fn main() {
     }
   };
 
-  // Load background music
-  let mut background_music: Option<Music> = None;
+  // Load all background music tracks
+  let mut music_tracks: Vec<Option<Music>> = vec![None, None, None];
   if let Some(ref audio) = audio_device {
-    match audio.new_music("assets/sounds/music/Gats.mp3") {
-      Ok(music) => {
-        background_music = Some(music);
-        println!("Successfully loaded background music");
-      }
-      Err(e) => {
-        eprintln!("Warning: Could not load background music: {:?}", e);
+    // Load music for each map
+    let music_files = [
+      "assets/sounds/music/blood_guts.mp3",    // Map 1
+      "assets/sounds/music/behelit.mp3",   // Map 2
+      "assets/sounds/music/ghosts.mp3" // Map 3
+    ];
+    
+    for (i, music_file) in music_files.iter().enumerate() {
+      match audio.new_music(music_file) {
+        Ok(music) => {
+          music_tracks[i] = Some(music);
+          println!("Successfully loaded music track {}: {}", i + 1, music_file);
+        }
+        Err(e) => {
+          eprintln!("Warning: Could not load music track {}: {:?}", i + 1, e);
+        }
       }
     }
   }
@@ -1066,8 +1075,8 @@ fn main() {
     let delta_time = current_time - last_time;
     last_time = current_time;
 
-    // Update audio stream every frame
-    if let Some(ref music) = background_music {
+    // Update audio stream every frame for current music track
+    if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
       music.update_stream();
       
       // Handle looping manually - restart if music finished and should be playing
@@ -1132,7 +1141,7 @@ fn main() {
             window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
             
             // Start background music when entering the game
-            if let Some(ref music) = background_music {
+            if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
               if music_enabled {
                 music.play_stream();
                 music.set_volume(audio_manager.get_music_volume());
@@ -1165,7 +1174,7 @@ fn main() {
             window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
             
             // Start background music when entering the game
-            if let Some(ref music) = background_music {
+            if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
               if music_enabled {
                 music.play_stream();
                 music.set_volume(audio_manager.get_music_volume());
@@ -1202,7 +1211,7 @@ fn main() {
           game_state = GameState::Paused;
           window.enable_cursor();
           // Pause music when game is paused
-          if let Some(ref music) = background_music {
+          if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
             if music_enabled && music.is_stream_playing() {
               music.pause_stream();
             }
@@ -1233,7 +1242,7 @@ fn main() {
         // Toggle music with N key
         if window.is_key_pressed(KeyboardKey::KEY_N) {
           music_enabled = !music_enabled;
-          if let Some(ref music) = background_music {
+          if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
             if music_enabled {
               if !music.is_stream_playing() {
                 music.play_stream();
@@ -1250,7 +1259,7 @@ fn main() {
           let current_volume = audio_manager.get_music_volume();
           let new_volume = (current_volume + 0.01).min(1.0);
           audio_manager.set_music_volume(new_volume);
-          if let Some(ref music) = background_music {
+          if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
             music.set_volume(new_volume);
           }
         }
@@ -1258,7 +1267,7 @@ fn main() {
           let current_volume = audio_manager.get_music_volume();
           let new_volume = (current_volume - 0.01).max(0.0);
           audio_manager.set_music_volume(new_volume);
-          if let Some(ref music) = background_music {
+          if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
             music.set_volume(new_volume);
           }
         }
@@ -1345,7 +1354,7 @@ fn main() {
                 window.disable_cursor();
                 window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
                 // Resume music when game resumes
-                if let Some(ref music) = background_music {
+                if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
                   if music_enabled {
                     music.resume_stream();
                   }
@@ -1358,7 +1367,7 @@ fn main() {
                 enemies.clear(); // Clear enemies when going back to main menu
                 window.enable_cursor();
                 // Stop music when returning to main menu
-                if let Some(ref music) = background_music {
+                if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
                   music.stop_stream();
                 }
               }
@@ -1374,7 +1383,7 @@ fn main() {
             window.disable_cursor();
             window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
             // Resume music when game resumes
-            if let Some(ref music) = background_music {
+            if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
               if music_enabled {
                 music.resume_stream();
               }
@@ -1400,7 +1409,7 @@ fn main() {
                 window.disable_cursor();
                 window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
                 // Resume music when game resumes
-                if let Some(ref music) = background_music {
+                if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
                   if music_enabled {
                     music.resume_stream();
                   }
@@ -1413,7 +1422,7 @@ fn main() {
                 enemies.clear(); // Clear enemies when going back to main menu
                 window.enable_cursor();
                 // Stop music when returning to main menu
-                if let Some(ref music) = background_music {
+                if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
                   music.stop_stream();
                 }
               }
@@ -1427,7 +1436,7 @@ fn main() {
             window.disable_cursor();
             window.set_mouse_position(Vector2::new(window_width as f32 / 2.0, window_height as f32 / 2.0));
             // Resume music when game resumes
-            if let Some(ref music) = background_music {
+            if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
               if music_enabled {
                 music.resume_stream();
               }
@@ -1462,7 +1471,7 @@ fn main() {
           enemies.clear(); // Clear enemies when going back to main menu
           window.enable_cursor();
           // Stop music when returning to main menu
-          if let Some(ref music) = background_music {
+          if let Some(ref music) = music_tracks.get(selected_map).and_then(|m| m.as_ref()) {
             music.stop_stream();
           }
         }
