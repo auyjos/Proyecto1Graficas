@@ -1,125 +1,279 @@
-# Lesson 3: Understanding the Main Render Loop
-## Key Definitions
+# 🎮 Raycaster Game Engine - Advanced 3D FPS Experience
 
-    *Render Loop:* The continuous cycle that runs during the lifetime of a graphics application, responsible for updating the screen.
-    *Exit Condition:* A condition that, when met, terminates the render loop and closes the application.
-    *Buffer:* A block of memory used to store pixel data before it is rendered on the screen.
-    *Frame Rate (FPS):* The number of frames displayed per second. Higher frame rates result in smoother motion.
+A sophisticated first-person raycaster game built in Rust using Raylib, featuring advanced graphics, dynamic enemy AI, immersive audio, and comprehensive controller support.
 
-## Main Parts of the Render Loop
+## 🌟 Project Overview
 
-### - Initialization:
-        Set up necessary variables, buffers, and create the window.
+This project is a fully-featured 3D raycaster game engine that demonstrates advanced game development concepts including real-time 3D rendering, complex AI systems, spatial audio, and modern input handling. Built from the ground up using Rust and Raylib 5.5.1.
 
-### - Exit Condition:
-        Check for conditions that signal the end of the application, such as a specific key press or window close event.
+## ✨ Key Features
 
-### - Listening to User Input:
-        Handle user inputs like keyboard and mouse events.
+### 🎯 **Core Gameplay**
+- **First-Person 3D Raycasting**: Advanced raycasting engine with textured walls and perspective-correct rendering
+- **Dynamic Enemy System**: 31 enemies per level with 4 different AI behavior types
+- **Combat System**: Sword-based melee combat with visual and audio feedback
+- **Multiple Map Support**: Three distinct maze layouts with automatic map progression
+- **Goal-Based Progression**: Reach the goal to advance to the next level
 
-### - Clearing the Buffer:
-        Clear the buffer to prepare it for the new frame's pixel data.
+### 🎮 **Input & Controls**
+- **Dual Input Support**: Full keyboard + mouse and gamepad support
+- **PS5 Controller Integration**: Native PlayStation 5 controller support with haptic feedback
+- **Configurable Controls**: Customizable key bindings and sensitivity settings
+- **Smooth Movement**: Delta-time based movement for consistent performance across framerates
 
-### - Drawing Phase:
-        Update the buffer with new pixel data to be rendered.
+### 🎵 **Advanced Audio System**
+- **Map-Specific Music**: Unique background tracks for each level
+  - Map 1: `ghosts.mp3` - Atmospheric horror ambience
+  - Map 2: `behelit.mp3` - Dark fantasy soundtrack  
+  - Map 3: `blood_guts.mp3` - Intense combat music
+- **3D Spatial Audio**: Positional walking sounds with proper volume control
+- **Combat Audio Feedback**: 
+  - Sword swing sounds when attacking
+  - Impact sounds when hitting enemies
+  - Death sounds when enemies are defeated
+- **Dynamic Volume Control**: Separate music and SFX volume controls
 
-### - Update the Window:
-        Send the buffer data to the window for display.
+### 🤖 **Intelligent Enemy AI**
+Four distinct enemy types with unique behaviors:
+- **Patrol Enemies**: Follow predefined routes between waypoints
+- **Wandering Enemies**: Random movement within defined radius areas
+- **Chase Enemies**: Actively pursue the player when in range
+- **Guard Enemies**: Stationary sentries protecting key areas
 
-### - Calculate Frame Rate:
-        Track and display the frame rate (FPS) for performance monitoring.
+### 🎨 **Visual Systems**
+- **Texture Management**: Advanced texture loading with RGBA format support
+- **Animated Sprites**: Multi-frame enemy animations (idle, walking, attack, death)
+- **Dynamic Weapon Display**: Always-visible sword with attack animations
+- **Performance Modes**: Quality vs. performance rendering options
+- **Minimap System**: Optional overhead view for navigation
+- **Debug Overlays**: Real-time performance and game state information
 
-## Step-by-Step Guide
+### 🔧 **Technical Architecture**
 
-### 1. Initialization
+#### **Modular Code Structure**
+```
+src/
+├── main.rs          # Core game loop and rendering pipeline
+├── player.rs        # Player state and movement systems
+├── enemy.rs         # Enemy AI and behavior logic
+├── maze.rs          # Level generation and collision detection
+├── textures.rs      # Texture loading and management
+├── audio.rs         # Audio system and sound management
+├── framebuffer.rs   # Low-level rendering buffer
+├── caster.rs        # Raycasting algorithm implementation
+└── line.rs          # Line drawing utilities
+```
 
-    Create a buffer to store pixel data.
-    Create a window using a window management library (e.g., minifb).
+#### **Performance Features**
+- **Optimized Raycasting**: Efficient wall detection with early termination
+- **Dynamic Enemy Culling**: Only render enemies within player's field of view
+- **Texture Caching**: Smart texture loading and memory management
+- **Delta-Time Movement**: Frame-rate independent physics
+- **Configurable Quality**: Adjustable rendering quality for different hardware
 
-### 2. Exit Condition
+## 🛠️ **Build Requirements**
 
-    Continuously check if the exit condition (such as pressing the ESC key) is met to break out of the loop and close the application.
+### **Dependencies**
+- **Rust** (latest stable version)
+- **Raylib 5.5.1** (automatically handled by Cargo)
+- **ImageMagick** (for texture conversion)
 
-### 3. Listening to User Input
+### **System Requirements**
+- **OS**: Linux, Windows, macOS
+- **Memory**: 2GB RAM minimum
+- **Graphics**: OpenGL 3.3+ compatible GPU
+- **Audio**: Standard audio device for sound output
+- **Controllers**: PS5 controller support (optional)
 
-    Poll for user input (keyboard or mouse events) and handle accordingly.
+## 🚀 **Installation & Running**
 
-### 4. Clearing the Buffer
+### **Quick Start**
+```bash
+# Clone the repository
+git clone <repository-url>
+cd Proyecto1
 
-    Reset the buffer to a default state (e.g., setting all pixels to black) before drawing the new frame.
+# Build and run (debug mode)
+cargo run
 
-### 5. Drawing Phase
+# Build and run (optimized release mode)
+cargo run --release
 
-    Populate the buffer with the new frame's pixel data. This can include drawing shapes, images, or other graphics.
+# Build only
+cargo build --release
+```
 
-### 6. Update the Window
+### **Texture Setup**
+Convert any new textures to RGBA format:
+```bash
+# Convert single texture
+magick input_texture.png -alpha on output_texture_rgba.png
 
-    Render the contents of the buffer to the window, making the new frame visible on the screen.
+# Convert all textures using provided script
+./convert_to_rgba.sh
+```
 
-### 7. Calculate Frame Rate
+## 🎮 **Controls**
 
-    Track the time it takes to render each frame and calculate the frames per second (FPS) to monitor performance.
+### **Keyboard + Mouse**
+- **W, A, S, D**: Movement (forward, strafe left, backward, strafe right)
+- **Mouse**: Look around / Camera rotation
+- **Left Click**: Attack with sword
+- **M**: Toggle minimap
+- **ESC**: Pause menu
+- **Plus/Minus**: Adjust music volume
+- **Tab**: Toggle performance mode
 
-This structure ensures a smooth and responsive graphics application by continuously updating and rendering frames in a loop. By understanding each part of the render loop, students will be able to create more complex and interactive graphics programs.
-=======
-In this lesson, we'll explore the concepts of windows, window managers, operating systems, and video drivers, and how they relate to each other in the context of computer graphics.
+### **PS5 Controller**
+- **Left Stick**: Movement
+- **Right Stick**: Camera rotation  
+- **R2 Trigger**: Attack with sword
+- **Options Button**: Pause menu
+- **TouchPad**: Toggle minimap
+- **D-Pad Up/Down**: Adjust volume
 
-## Definitions
+## 🎯 **Gameplay Mechanics**
 
-*Window:* A rectangular area on the screen where a program displays its output and receives user input. It's a fundamental building block of graphical user interfaces (GUIs).
-*Window Manager:* A system software component responsible for managing the placement, sizing, and appearance of windows within a windowing system. It controls the layout and decoration of windows.
-*Operating System (OS):* The software that manages computer hardware, software resources, and provides common services for computer programs. Examples include Windows, macOS, and Linux.
-*Video Driver:* A software component that enables communication between the operating system and the video hardware, such as the graphics card. It provides a standardized interface for programs to access video hardware capabilities.
+### **Combat System**
+- **Sword Range**: 150-unit attack radius with 30° cone
+- **Attack Timing**: Attacks have cooldown periods to prevent spam
+- **Visual Feedback**: Sword position adjusts during attacks (left/down movement)
+- **Audio Feedback**: Different sounds for successful hits vs. missed attacks
 
-## The Abstraction of Windows
+### **Enemy Behavior**
+- **Dynamic Positioning**: Enemies spawn in valid maze locations
+- **Collision Avoidance**: Smart pathfinding around walls
+- **State Management**: Idle, walking, attacking, and death animations
+- **Player Interaction**: Enemies react to player proximity with aggressive behavior
 
-The operating system provides an abstraction layer to create the illusion of windows in the framebuffer, which is essentially an array in memory. Here's how the process works:
+### **Level Progression**
+- **Goal System**: Find and reach the goal marker ('g') in each maze
+- **Automatic Advancement**: Seamless transition between levels
+- **Increasing Difficulty**: Larger mazes and more complex enemy patterns
 
-### 1. The operating system communicates with the video driver to manage the framebuffer and access the video hardware.
-### 2. Programs interact with the operating system's API to create and manage windows. They specify the size, position, and content of the windows.
-### 3. The window manager, which is a part of the operating system or a separate program running on top of it, receives the window creation requests and manages the layout and appearance of the windows.
-### 4. When a program wants to update the content of its window, it renders the graphics using APIs like OpenGL, DirectX, or Vulkan, which communicate with the video driver to access the video hardware.
-### 5. The window manager composes the individual windows' contents into a single image that represents the entire screen. This composition process involves combining the framebuffers of each window according to their positions and stacking order.
-### 6. The final composed image is then sent to the video driver, which displays it on the screen.
+## 📁 **Asset Structure**
 
-## Window Managers in Different Operating Systems
+```
+assets/
+├── textures/
+│   ├── elements/          # Wall and environmental textures
+│   ├── metals/           # Metallic surface textures
+│   └── large_door_rgba.png # Special door textures
+├── sounds/
+│   ├── music/            # Background music tracks
+│   │   ├── ghosts.mp3
+│   │   ├── behelit.mp3
+│   │   └── blood_guts.mp3
+│   ├── walk.mp3          # Footstep sounds
+│   ├── sword_sound.mp3   # Combat audio
+│   ├── splat.mp3         # Hit effects
+│   └── death.mp3         # Enemy death sounds
+├── sprite1_rgba.png      # Enemy sprite texture
+├── sprite_sheet_rgba.png # Animated enemy frames
+└── sword2.png            # Weapon texture
+```
 
-### - Windows: On Microsoft Windows, the window manager is an integral part of the operating system. It is called the Desktop Window Manager (DWM) and is responsible for compositing windows and providing visual effects.
-### - macOS: macOS uses a window manager called Quartz Compositor, which is part of the Cocoa framework. It handles window compositing and provides a consistent user interface experience.
-### - Linux: Linux has various window managers available, such as i3, a popular tiling window manager. Other common window managers include Mutter (GNOME), KWin (KDE), and Xfwm (Xfce). These window managers run on top of the X Window System (X11) or the newer Wayland protocol.
+## 🎬 **Video Demonstration**
 
-The interaction between the operating system, window manager, and video driver creates the seamless experience of windows on the screen. The operating system provides the necessary abstractions and APIs for programs to create and manage windows, while the window manager handles the composition and layout of the windows. The video driver ensures that the final composed image is displayed correctly on the screen.
+### **Controller Functionality Demo**
+🎥 **[Link to Video Demonstration]** - (https://youtube.com/shorts/y-aDI8vax6c)
 
-Understanding this abstraction process and the role of each component is essential for developing graphical app
+*This section will contain a link to a comprehensive video showing:*
+- *Complete PS5 controller integration*
+- *All movement and combat controls*
+- *Audio system demonstration*
+- *Enemy AI behaviors*
+- *Level progression and map transitions*
+- *Performance features and quality settings*
 
-1. Updated README.md:
-   - Changed the title and introduction to focus on windows, window managers, operating systems, and video drivers.
-   - Reorganized content to explain the abstraction of windows.
-   - Added sections on window managers in different operating systems.
+## 🔧 **Development Features**
 
-2. Modified src/framebuffer.rs:
-   - Introduced a new `_render_to_file` method (renamed from `render_to_file`).
-   - Added a new `swap_buffers` method that interacts with Raylib for rendering.
+### **Debug Tools**
+- **Real-time Performance Metrics**: FPS, frame timing, memory usage
+- **Enemy State Display**: AI behavior and position debugging
+- **Audio Volume Controls**: Live adjustment of all audio levels
+- **Collision Visualization**: Debug rendering of hit boxes and ray casts
 
-3. Updated src/main.rs:
-   - Imported `framebuffer` module.
-   - Initialized a Raylib window and thread.
-   - Implemented a main loop that calls `swap_buffers` continuously.
+### **Extensibility**
+- **Modular Design**: Easy to add new enemy types, weapons, or levels
+- **Configurable Systems**: Adjustable game parameters without recompilation
+- **Asset Pipeline**: Automated texture conversion and loading
+- **Cross-Platform**: Builds and runs on multiple operating systems
 
-Direct Impacts:
+## 🏆 **Technical Achievements**
 
-1. Simplified API: The new `Framebuffer` class provides a more intuitive interface.
+### **Graphics Programming**
+- ✅ **Custom Raycasting Engine**: Built from scratch for optimal performance
+- ✅ **Texture Mapping**: Perspective-correct wall texturing with RGBA support
+- ✅ **Sprite Rendering**: 3D positioned sprites with distance-based scaling
+- ✅ **Animation System**: Multi-frame character animations with state management
 
-2. Improved Performance: Using `raylib::Image` likely enhances performance compared to manual buffer management.
+### **Game Systems**
+- ✅ **Advanced AI**: Multiple behavior patterns with pathfinding
+- ✅ **Physics Integration**: Collision detection and response systems
+- ✅ **Audio Engine**: 3D spatial audio with dynamic mixing
+- ✅ **Input Abstraction**: Unified input handling for multiple device types
 
-3. Enhanced Features: The addition of `raylib` brings additional functionality and better graphics capabilities.
+### **Performance Optimization**
+- ✅ **Efficient Algorithms**: Optimized raycasting with early exit conditions
+- ✅ **Memory Management**: Smart caching and resource pooling
+- ✅ **Scalable Rendering**: Adjustable quality settings for different hardware
+- ✅ **Frame-Rate Independence**: Consistent gameplay across varying performance
 
-4. Compatibility Issues: Code using the old `Framebuffer` implementation may require updates to work with the new `raylib`-based approach.
+## 🧩 **Code Highlights**
 
-5. Learning Curve: Developers familiar with the old implementation will need time to adapt to the new `raylib`-based approach.
+### **Raycasting Algorithm**
+The core rendering uses a sophisticated raycasting implementation with:
+- DDA (Digital Differential Analyzer) for efficient grid traversal
+- Texture coordinate calculation for realistic wall rendering
+- Distance-based fog effects for atmospheric depth
 
-6. New Rendering Approach: The `swap_buffers` method introduces a new rendering mechanism using Raylib, which may require adjustments in how graphics are handled.
+### **Enemy AI System**
+```rust
+// Example: Chase enemy behavior
+if distance_to_player < chase_range {
+    let direction = (player_pos - enemy_pos).normalize();
+    enemy.move_towards(direction * chase_speed * delta_time);
+    enemy.set_animation(AnimationState::Attack);
+}
+```
 
-7. Window Management Integration: The changes allow for better integration with window management systems through Raylib.
+### **Audio Management**
+```rust
+// Dynamic audio mixing based on game state
+audio_manager.play_footstep_sound(player_velocity);
+audio_manager.set_music_volume(user_preference);
+audio_manager.trigger_combat_sound(attack_type);
+```
 
-8. Continuous Rendering: The main loop now continuously updates the framebuffer and renders it to the window, enabling smoother animations and interactions.
+## 🎯 **Future Development**
+
+### **Planned Features**
+- [ ] **Multiplayer Support**: Network-based cooperative gameplay
+- [ ] **Level Editor**: In-game maze creation tools
+- [ ] **Additional Weapons**: Ranged combat options
+- [ ] **Power-ups**: Temporary ability enhancements
+- [ ] **Save System**: Progress persistence across sessions
+
+### **Technical Improvements**
+- [ ] **Enhanced Graphics**: Lighting effects and shadows
+- [ ] **Advanced AI**: Machine learning-based enemy behaviors  
+- [ ] **Mobile Support**: Touch-based controls for mobile devices
+- [ ] **VR Integration**: Virtual reality compatibility
+
+## 📄 **License**
+
+This project is developed as an educational demonstration of advanced game programming concepts using Rust and modern graphics programming techniques.
+
+## 🤝 **Contributing**
+
+This is a educational project showcasing advanced raycasting and game development techniques. The codebase demonstrates best practices in:
+- Rust game development
+- Real-time graphics programming
+- Audio system design
+- Input handling abstraction
+- Performance optimization
+
+---
+
+*Built with ❤️ using Rust and Raylib - Showcasing the power of systems programming for game development*
