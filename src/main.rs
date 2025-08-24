@@ -785,6 +785,171 @@ fn check_goal_reached(player: &Player, maze: &Maze, block_size: usize) -> bool {
   false
 }
 
+// Helper function to check if a position is valid for enemy placement
+fn is_valid_enemy_position(x: f32, y: f32, maze: &Maze, block_size: usize) -> bool {
+  let maze_x = (x / block_size as f32) as usize;
+  let maze_y = (y / block_size as f32) as usize;
+  
+  // Check bounds
+  if maze_y >= maze.len() || maze_x >= maze[0].len() {
+    return false;
+  }
+  
+  // Check if position is not a wall
+  maze[maze_y][maze_x] == ' '
+}
+
+// Helper function to find a valid position near a given coordinate
+fn find_valid_position_near(x: f32, y: f32, maze: &Maze, block_size: usize, max_distance: f32) -> Vector2 {
+  // First check if the original position is valid
+  if is_valid_enemy_position(x, y, maze, block_size) {
+    return Vector2::new(x, y);
+  }
+  
+  // Search in expanding circles for a valid position
+  for radius in 1..=(max_distance as i32) {
+    for angle_steps in 0..8 {
+      let angle = (angle_steps as f32) * std::f32::consts::PI / 4.0;
+      let test_x = x + (radius as f32 * block_size as f32 * 0.5) * angle.cos();
+      let test_y = y + (radius as f32 * block_size as f32 * 0.5) * angle.sin();
+      
+      if is_valid_enemy_position(test_x, test_y, maze, block_size) {
+        return Vector2::new(test_x, test_y);
+      }
+    }
+  }
+  
+  // If no valid position found, return a default safe position
+  Vector2::new(150.0, 150.0)
+}
+
+// Function to create enemies in valid positions for a given maze
+fn create_enemies_for_maze(maze: &Maze, block_size: usize) -> Vec<Enemy> {
+  let mut enemies = Vec::new();
+  
+  // Calculate maze dimensions in world coordinates
+  let maze_width = maze[0].len() as f32 * block_size as f32;
+  let maze_height = maze.len() as f32 * block_size as f32;
+  
+  println!("Creating enemies for maze: {}x{} blocks, {}x{} world coords", 
+           maze[0].len(), maze.len(), maze_width, maze_height);
+  
+  // Create enemy positions based on maze proportions rather than fixed coordinates
+  let mut enemy_configs = Vec::new();
+  
+  // Patrol enemies - distributed across the map
+  for i in 0..5 {
+    let base_x = (i as f32 + 1.0) * maze_width / 6.0;
+    let base_y = (i as f32 + 1.0) * maze_height / 6.0;
+    
+    // Horizontal patrol
+    let patrol_distance = (maze_width * 0.15).min(200.0); // 15% of map width or 200px max
+    enemy_configs.push((
+      base_x,
+      base_y,
+      "patrol",
+      Some((base_x + patrol_distance, base_y))
+    ));
+    
+    // Vertical patrol
+    let vertical_patrol_distance = (maze_height * 0.15).min(200.0);
+    enemy_configs.push((
+      base_x + maze_width * 0.1,
+      base_y + maze_height * 0.1,
+      "patrol", 
+      Some((base_x + maze_width * 0.1, base_y + maze_height * 0.1 + vertical_patrol_distance))
+    ));
+  }
+  
+  // Wandering enemies - scattered across different quadrants
+  let quadrants = [
+    (0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75), // Four corners
+    (0.5, 0.3), (0.3, 0.6), (0.7, 0.6), (0.5, 0.8)          // Additional scattered positions
+  ];
+  
+  for (x_ratio, y_ratio) in quadrants.iter() {
+    enemy_configs.push((
+      x_ratio * maze_width,
+      y_ratio * maze_height,
+      "wander",
+      None
+    ));
+  }
+  
+  // Chasing enemies - positioned strategically
+  let chase_positions = [
+    (0.2, 0.4), (0.8, 0.6), (0.6, 0.2), (0.4, 0.8), (0.5, 0.5)
+  ];
+  
+  for (x_ratio, y_ratio) in chase_positions.iter() {
+    enemy_configs.push((
+      x_ratio * maze_width,
+      y_ratio * maze_height,
+      "chase",
+      None
+    ));
+  }
+  
+  // Guard enemies - positioned around key areas
+  let guard_positions = [
+    (0.15, 0.15), (0.85, 0.15), (0.15, 0.85), (0.85, 0.85), // Corners
+    (0.5, 0.15), (0.5, 0.85), (0.15, 0.5), (0.85, 0.5)      // Mid-edges
+  ];
+  
+  for (x_ratio, y_ratio) in guard_positions.iter() {
+    enemy_configs.push((
+      x_ratio * maze_width,
+      y_ratio * maze_height,
+      "guard",
+      None
+    ));
+  }
+  
+  // Create enemies from configurations
+  for (i, (x, y, enemy_type, patrol_end)) in enemy_configs.iter().enumerate() {
+    let valid_pos = find_valid_position_near(*x, *y, maze, block_size, 5.0); // Increased search radius
+    
+    // Verify the position is actually valid before creating enemy
+    if !is_valid_enemy_position(valid_pos.x, valid_pos.y, maze, block_size) {
+      println!("Warning: Could not find valid position for enemy {} at ({}, {})", i, x, y);
+      continue;
+    }
+    
+    match enemy_type {
+      &"patrol" => {
+        if let Some((end_x, end_y)) = patrol_end {
+          let valid_end = find_valid_position_near(*end_x, *end_y, maze, block_size, 5.0);
+          if is_valid_enemy_position(valid_end.x, valid_end.y, maze, block_size) {
+            enemies.push(Enemy::new_patrol(valid_pos.x, valid_pos.y, 'a', valid_end.x, valid_end.y));
+            println!("Created patrol enemy at ({:.1}, {:.1}) -> ({:.1}, {:.1})", 
+                     valid_pos.x, valid_pos.y, valid_end.x, valid_end.y);
+          } else {
+            println!("Warning: Could not find valid end position for patrol enemy {}", i);
+          }
+        }
+      }
+      &"wander" => {
+        let wander_radius = (maze_width.min(maze_height) * 0.1).max(50.0).min(120.0); // Adaptive radius
+        enemies.push(Enemy::new_wander(valid_pos.x, valid_pos.y, 'a', wander_radius));
+        println!("Created wandering enemy at ({:.1}, {:.1}) with radius {:.1}", 
+                 valid_pos.x, valid_pos.y, wander_radius);
+      }
+      &"chase" => {
+        enemies.push(Enemy::new_chase(valid_pos.x, valid_pos.y, 'a'));
+        println!("Created chase enemy at ({:.1}, {:.1})", valid_pos.x, valid_pos.y);
+      }
+      &"guard" => {
+        enemies.push(Enemy::new(valid_pos.x, valid_pos.y, 'a'));
+        println!("Created guard enemy at ({:.1}, {:.1})", valid_pos.x, valid_pos.y);
+      }
+      _ => {}
+    }
+  }
+  
+  println!("Total enemies created: {}", enemies.len());
+  enemies
+}
+
 fn main() {
   // Use your actual screen resolution
   let mut window_width = 1980;
@@ -835,33 +1000,8 @@ fn main() {
     mouse_sensitivity: 0.01,
   };
 
-  // Initialize persistent enemy list with different movement patterns
-  let mut enemies = vec![
-    // Patrol enemies
-    Enemy::new_patrol(250.0, 250.0, 'a', 450.0, 250.0),  // Horizontal patrol 1
-    Enemy::new_patrol(350.0, 550.0, 'a', 350.0, 350.0),  // Vertical patrol 1
-    Enemy::new_patrol(550.0, 150.0, 'a', 750.0, 150.0),  // Horizontal patrol 2
-    Enemy::new_patrol(150.0, 300.0, 'a', 150.0, 500.0),  // Vertical patrol 2
-    Enemy::new_patrol(650.0, 450.0, 'a', 850.0, 450.0),  // Horizontal patrol 3
-    
-    // Wandering enemies
-    Enemy::new_wander(450.0, 450.0, 'a', 80.0),          // Wandering enemy 1
-    Enemy::new_wander(300.0, 700.0, 'a', 60.0),          // Wandering enemy 2
-    Enemy::new_wander(700.0, 200.0, 'a', 90.0),          // Wandering enemy 3
-    Enemy::new_wander(500.0, 600.0, 'a', 70.0),          // Wandering enemy 4
-    
-    // Chasing enemies - more aggressive
-    Enemy::new_chase(650.0, 350.0, 'a'),                 // Chasing enemy 1
-    Enemy::new_chase(200.0, 600.0, 'a'),                 // Chasing enemy 2
-    Enemy::new_chase(750.0, 550.0, 'a'),                 // Chasing enemy 3
-    
-    // Stationary guards at key positions
-    Enemy::new(150.0, 550.0, 'a'),                       // Guard 1
-    Enemy::new(450.0, 150.0, 'a'),                       // Guard 2
-    Enemy::new(750.0, 350.0, 'a'),                       // Guard 3
-    Enemy::new(350.0, 750.0, 'a'),                       // Guard 4
-    Enemy::new(550.0, 500.0, 'a'),                       // Guard 5
-  ];
+  // Initialize empty enemy list - enemies will be created when map is loaded
+  let mut enemies: Vec<Enemy> = Vec::new();
 
   // Start with cursor enabled for menu navigation
   window.enable_cursor();
@@ -984,6 +1124,8 @@ fn main() {
             maze_data = Some(load_maze_with_player(map_info.filename, block_size));
             if let Some(ref data) = maze_data {
               player.pos = data.player_start;
+              // Create fresh enemies for the new maze
+              enemies = create_enemies_for_maze(&data.maze, block_size);
             }
             game_state = GameState::Playing;
             window.disable_cursor();
@@ -1015,6 +1157,8 @@ fn main() {
             maze_data = Some(load_maze_with_player(map_info.filename, block_size));
             if let Some(ref data) = maze_data {
               player.pos = data.player_start;
+              // Create fresh enemies for the new maze
+              enemies = create_enemies_for_maze(&data.maze, block_size);
             }
             game_state = GameState::Playing;
             window.disable_cursor();
@@ -1211,6 +1355,7 @@ fn main() {
                 // Back to start screen
                 game_state = GameState::StartScreen;
                 maze_data = None;
+                enemies.clear(); // Clear enemies when going back to main menu
                 window.enable_cursor();
                 // Stop music when returning to main menu
                 if let Some(ref music) = background_music {
@@ -1265,6 +1410,7 @@ fn main() {
                 // Back to start screen
                 game_state = GameState::StartScreen;
                 maze_data = None;
+                enemies.clear(); // Clear enemies when going back to main menu
                 window.enable_cursor();
                 // Stop music when returning to main menu
                 if let Some(ref music) = background_music {
@@ -1313,6 +1459,7 @@ fn main() {
           // Back to start screen
           game_state = GameState::StartScreen;
           maze_data = None;
+          enemies.clear(); // Clear enemies when going back to main menu
           window.enable_cursor();
           // Stop music when returning to main menu
           if let Some(ref music) = background_music {
