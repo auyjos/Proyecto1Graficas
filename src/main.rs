@@ -395,6 +395,90 @@ fn render_world(
   }
 }
 
+// Function to check if player's attack hits enemies
+fn check_attack_collision(
+  player: &mut Player, 
+  enemies: &mut Vec<Enemy>, 
+  _block_size: usize, 
+  audio_manager: &AudioManager,
+  sword_sound: &Option<Sound>,
+  hit_sound: &Option<Sound>,
+  death_sound: &Option<Sound>
+) {
+  if !player.is_attacking {
+    return;
+  }
+
+  let attack_range = 150.0; // Range in which attacks can hit
+  let attack_angle = PI / 6.0; // 30-degree cone in front of player
+  
+  // Only process attack collision during the peak of the attack (middle third)
+  let attack_progress = player.get_attack_progress();
+  if attack_progress < 0.2 || attack_progress > 0.8 {
+    return;
+  }
+
+  // Play sword swing sound only once per attack when no enemy is hit
+  if !player.enemy_hit_this_attack {
+    let mut any_enemy_hit = false;
+    
+    for enemy in enemies.iter_mut() {
+      if enemy.is_dead {
+        continue;
+      }
+
+      // Calculate distance to enemy
+      let dx = enemy.pos.x - player.pos.x;
+      let dy = enemy.pos.y - player.pos.y;
+      let distance = (dx * dx + dy * dy).sqrt();
+      
+      if distance > attack_range {
+        continue;
+      }
+
+      // Calculate angle to enemy relative to player's facing direction
+      let angle_to_enemy = dy.atan2(dx);
+      let mut angle_diff = angle_to_enemy - player.a;
+      
+      // Normalize angle difference to [-PI, PI]
+      while angle_diff > PI {
+        angle_diff -= 2.0 * PI;
+      }
+      while angle_diff < -PI {
+        angle_diff += 2.0 * PI;
+      }
+
+      // Check if enemy is within attack cone
+      if angle_diff.abs() <= attack_angle {
+        // Hit the enemy
+        any_enemy_hit = true;
+        player.enemy_hit_this_attack = true;
+        
+        // Play hit sound
+        if let Some(sound) = hit_sound {
+          audio_manager.play_enemy_hit(sound);
+        }
+        
+        // Kill the enemy and play death sound
+        enemy.kill();
+        if let Some(sound) = death_sound {
+          audio_manager.play_enemy_death(sound);
+        }
+        
+        println!("Enemy hit! Distance: {:.1}, Angle: {:.1}°", distance, angle_diff.to_degrees());
+      }
+    }
+    
+    // If no enemy was hit, play sword swing sound
+    if !any_enemy_hit {
+      if let Some(sound) = sword_sound {
+        audio_manager.play_sword_swing(sound);
+      }
+      player.enemy_hit_this_attack = true; // Prevent multiple sword sounds
+    }
+  }
+}
+
 fn render_enemies(framebuffer: &mut Framebuffer, player: &Player, enemies: &mut Vec<Enemy>, texture_cache: &TextureManager, delta_time: f32, maze: &Maze, block_size: usize) {
   // Remove enemies that should despawn
   enemies.retain(|enemy| !enemy.should_despawn());
@@ -551,6 +635,69 @@ fn render_minimap(
   d.draw_text("You", legend_x + 20, legend_y + 80, 12, Color::WHITE);
 }
 
+fn render_sword(
+  d: &mut RaylibDrawHandle,
+  player: &Player,
+  texture_manager: &TextureManager,
+  screen_width: i32,
+  screen_height: i32,
+) {
+  if let Some(sword_texture) = texture_manager.get_sword_texture() {
+    // Base sword properties - always visible
+    let base_sword_width = 200.0;
+    let base_sword_height = 400.0;
+    
+    // Base position - more centered, bottom-middle area
+    let base_x = screen_width as f32 * 0.55; // More centered (was 0.75)
+    let base_y = screen_height as f32 * 0.7;  // Slightly lower (was 0.65)
+    let base_rotation = -15.0; // Slightly more angled for better visual
+    
+    // Attack animation modifiers - LEFT and DOWN movement
+    let (attack_offset_x, attack_offset_y, attack_rotation_offset, attack_scale) = if player.is_attacking {
+      let attack_progress = player.get_attack_progress();
+      
+      // Attack motion: swing LEFT and DOWN (opposite of before)
+      let swing_x = -attack_progress * 100.0; // Move LEFT during attack (negative)
+      let swing_y = attack_progress * 80.0;   // Move DOWN during attack (positive)
+      let swing_rotation = -attack_progress * 60.0; // Rotate counterclockwise (negative)
+      let scale_increase = attack_progress * 0.4; // Slightly bigger size increase
+      
+      (swing_x, swing_y, swing_rotation, scale_increase)
+    } else {
+      (0.0, 0.0, 0.0, 0.0) // No attack animation
+    };
+    
+    // Final position and properties
+    let final_x = base_x + attack_offset_x;
+    let final_y = base_y + attack_offset_y;
+    let final_rotation = base_rotation + attack_rotation_offset;
+    let final_scale = 1.0 + attack_scale;
+    let final_width = base_sword_width * final_scale;
+    let final_height = base_sword_height * final_scale;
+    
+    // Opacity: always visible, full brightness during attack
+    let alpha = if player.is_attacking {
+      255 // Full opacity during attack
+    } else {
+      220 // Slightly more visible when not attacking (was 200)
+    };
+    
+    // Draw the sword
+    let source_rect = Rectangle::new(0.0, 0.0, sword_texture.width as f32, sword_texture.height as f32);
+    let dest_rect = Rectangle::new(final_x, final_y, final_width, final_height);
+    let origin = Vector2::new(final_width * 0.5, final_height * 0.85); // Rotation point near handle
+    let tint = Color::new(255, 255, 255, alpha);
+    
+    d.draw_texture_pro(
+      sword_texture,
+      source_rect,
+      dest_rect,
+      origin,
+      final_rotation,
+      tint,
+    );
+  }
+}
 fn render_pause_menu(
   d: &mut RaylibDrawHandle,
   selected_option: usize,
@@ -993,12 +1140,12 @@ fn main() {
   
   // Game variables (will be initialized when map is selected)
   let mut maze_data: Option<MazeData> = None;
-  let mut player = Player {
-    pos: Vector2::new(150.0, 150.0), // Temporary default
-    a: PI / 3.0,
-    fov: PI / 3.0,
-    mouse_sensitivity: 0.01,
-  };
+  let mut player = Player::new(
+    Vector2::new(150.0, 150.0), // Temporary default
+    PI / 3.0,
+    PI / 3.0,
+    0.01,
+  );
 
   // Initialize empty enemy list - enemies will be created when map is loaded
   let mut enemies: Vec<Enemy> = Vec::new();
@@ -1059,6 +1206,55 @@ fn main() {
   } else {
     None
   };
+
+  // Load combat sounds
+  let mut sword_sound = if let Some(ref audio) = audio_device {
+    match audio.new_sound("assets/sounds/sword_sound.mp3") {
+      Ok(sound) => {
+        println!("Successfully loaded sword sound");
+        Some(sound)
+      }
+      Err(e) => {
+        eprintln!("Warning: Could not load sword sound: {:?}", e);
+        None
+      }
+    }
+  } else {
+    None
+  };
+
+  let mut hit_sound = if let Some(ref audio) = audio_device {
+    match audio.new_sound("assets/sounds/splat.mp3") {
+      Ok(sound) => {
+        println!("Successfully loaded hit sound");
+        Some(sound)
+      }
+      Err(e) => {
+        eprintln!("Warning: Could not load hit sound: {:?}", e);
+        None
+      }
+    }
+  } else {
+    None
+  };
+
+  let mut death_sound = if let Some(ref audio) = audio_device {
+    match audio.new_sound("assets/sounds/death.mp3") {
+      Ok(sound) => {
+        println!("Successfully loaded death sound");
+        Some(sound)
+      }
+      Err(e) => {
+        eprintln!("Warning: Could not load death sound: {:?}", e);
+        None
+      }
+    }
+  } else {
+    None
+  };
+
+  // Setup combat sounds
+  audio_manager.setup_combat_sounds(&mut sword_sound, &mut hit_sound, &mut death_sound);
 
   let mut show_minimap = false; // Toggle for minimap display
   let mut selected_menu_option = 0; // 0 = Resume, 1 = Back to Main Menu  
@@ -1220,7 +1416,7 @@ fn main() {
 
         // Process player input and movement
         if let Some(ref data) = maze_data {
-          process_events(&mut player, &window, &data.maze, block_size, window_width, window_height, &audio_manager, &walking_sound);
+          process_events(&mut player, &window, &data.maze, block_size, window_width, window_height, &audio_manager, &walking_sound, delta_time);
           
           // Check if player reached the goal
           if check_goal_reached(&player, &data.maze, block_size) {
@@ -1276,6 +1472,9 @@ fn main() {
         if let Some(ref data) = maze_data {
           render_world(&mut framebuffer, &data.maze, block_size, &player, &texture_cache, performance_mode);
           render_enemies(&mut framebuffer, &player, &mut enemies, &texture_cache, delta_time, &data.maze, block_size);
+          
+          // Check for attack collisions
+          check_attack_collision(&mut player, &mut enemies, block_size, &audio_manager, &sword_sound, &hit_sound, &death_sound);
         }
 
         // Check gamepad status before rendering
@@ -1293,6 +1492,9 @@ fn main() {
           
           d.draw_texture_ex(&framebuffer_texture, Vector2::zero(), 0.0, 1.0, Color::WHITE);
           
+          // Render sword (always visible, with attack animation when attacking)
+          render_sword(&mut d, &player, &texture_cache, window_width, window_height);
+          
           // Draw UI elements
           let alive_enemies = enemies.iter().filter(|e| !e.is_dead).count();
           
@@ -1302,20 +1504,21 @@ fn main() {
           // Controller status
           if gamepad_available {
             d.draw_text(&format!("Controller: {}", gamepad_name), 10, 55, 16, Color::GREEN);
-            d.draw_text("Options: Pause | D-Pad: Move | Right Stick: Look", 10, 75, 14, Color::LIGHTGRAY);
+            d.draw_text("Options: Pause | D-Pad: Move | Right Stick: Look | R2/Square: Attack", 10, 75, 14, Color::LIGHTGRAY);
           } else {
             d.draw_text("Controller: Not Connected", 10, 55, 16, Color::GRAY);
           }
           
           d.draw_text("ESC/Options: Pause menu", 10, 95, 16, Color::WHITE);
-          d.draw_text("M: Toggle minimap", 10, 115, 16, Color::WHITE);
-          d.draw_text("P: Toggle performance mode", 10, 135, 16, Color::WHITE);
-          d.draw_text("N: Toggle music", 10, 155, 16, Color::WHITE);
-          d.draw_text("+/-: Volume control", 10, 175, 16, Color::WHITE);
-          d.draw_text("F11: Toggle fullscreen", 10, 195, 16, Color::WHITE);
-          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 215, 16, Color::WHITE);
-          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 235, 16, Color::WHITE);
-          d.draw_text(&format!("Music: {} (Vol: {:.0}%)", if music_enabled { "ON" } else { "OFF" }, audio_manager.get_music_volume() * 100.0), 10, 255, 16, Color::WHITE);
+          d.draw_text("SPACE/E/LMB: Attack", 10, 115, 16, Color::YELLOW);
+          d.draw_text("M: Toggle minimap", 10, 135, 16, Color::WHITE);
+          d.draw_text("P: Toggle performance mode", 10, 155, 16, Color::WHITE);
+          d.draw_text("N: Toggle music", 10, 175, 16, Color::WHITE);
+          d.draw_text("+/-: Volume control", 10, 195, 16, Color::WHITE);
+          d.draw_text("F11: Toggle fullscreen", 10, 215, 16, Color::WHITE);
+          d.draw_text(&format!("Minimap: {}", if show_minimap { "ON" } else { "OFF" }), 10, 235, 16, Color::WHITE);
+          d.draw_text(&format!("Performance: {}", if performance_mode { "HIGH" } else { "QUALITY" }), 10, 255, 16, Color::WHITE);
+          d.draw_text(&format!("Music: {} (Vol: {:.0}%)", if music_enabled { "ON" } else { "OFF" }, audio_manager.get_music_volume() * 100.0), 10, 275, 16, Color::WHITE);
           
           // Render minimap if enabled
           if let Some(ref data) = maze_data {

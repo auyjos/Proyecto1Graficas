@@ -10,6 +10,60 @@ pub struct Player {
     pub a: f32,
     pub fov: f32, // field of view
     pub mouse_sensitivity: f32,
+    pub is_attacking: bool,
+    pub attack_timer: f32,
+    pub attack_duration: f32,
+    pub attack_cooldown: f32,
+    pub enemy_hit_this_attack: bool, // Track if we hit an enemy during current attack
+}
+
+impl Player {
+    pub fn new(pos: Vector2, a: f32, fov: f32, mouse_sensitivity: f32) -> Self {
+        Player {
+            pos,
+            a,
+            fov,
+            mouse_sensitivity,
+            is_attacking: false,
+            attack_timer: 0.0,
+            attack_duration: 0.25, // Faster attack duration for more responsive feel
+            attack_cooldown: 0.0,
+            enemy_hit_this_attack: false,
+        }
+    }
+
+    pub fn start_attack(&mut self) {
+        if !self.is_attacking && self.attack_cooldown <= 0.0 {
+            self.is_attacking = true;
+            self.attack_timer = self.attack_duration;
+            self.attack_cooldown = 0.1; // Small cooldown to prevent spam clicking
+            self.enemy_hit_this_attack = false; // Reset hit flag for new attack
+        }
+    }
+
+    pub fn update_attack(&mut self, delta_time: f32) {
+        if self.is_attacking {
+            self.attack_timer -= delta_time;
+            if self.attack_timer <= 0.0 {
+                self.is_attacking = false;
+                self.attack_timer = 0.0;
+            }
+        }
+        
+        if self.attack_cooldown > 0.0 {
+            self.attack_cooldown -= delta_time;
+            if self.attack_cooldown < 0.0 {
+                self.attack_cooldown = 0.0;
+            }
+        }
+    }
+
+    pub fn get_attack_progress(&self) -> f32 {
+        if !self.is_attacking {
+            return 0.0;
+        }
+        1.0 - (self.attack_timer / self.attack_duration)
+    }
 }
 
 fn check_collision(maze: &Maze, x: f32, y: f32, block_size: usize) -> bool {
@@ -37,7 +91,8 @@ pub fn process_events(
     window_width: i32, 
     window_height: i32,
     audio_manager: &AudioManager,
-    walking_sound: &Option<Sound>
+    walking_sound: &Option<Sound>,
+    delta_time: f32
 ) {
     const MOVE_SPEED: f32 = 10.0;
     const ROTATION_SPEED: f32 = PI / 10.0;
@@ -45,6 +100,9 @@ pub fn process_events(
     const CONTROLLER_DEADZONE: f32 = 0.15; // Deadzone for analog sticks
 
     let mut is_moving = false;
+
+    // Update attack state
+    player.update_attack(delta_time);
 
     // Check if a gamepad is connected (PS5 controller)
     let gamepad_available = rl.is_gamepad_available(0);
@@ -232,6 +290,28 @@ pub fn process_events(
             player.pos.y = new_y;
             is_moving = true;
         }
+    }
+
+    // Attack controls
+    if gamepad_available {
+        // R2 trigger (Right Trigger 2) for attack
+        if rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_RIGHT_TRIGGER_2) {
+            player.start_attack();
+        }
+        // Alternative: Square button for attack
+        if rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_RIGHT_FACE_LEFT) {
+            player.start_attack();
+        }
+    }
+    
+    // Keyboard attack controls
+    if rl.is_key_pressed(KeyboardKey::KEY_SPACE) || rl.is_key_pressed(KeyboardKey::KEY_E) {
+        player.start_attack();
+    }
+    
+    // Mouse attack control
+    if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+        player.start_attack();
     }
 
     // Handle walking sound based on movement

@@ -8,6 +8,8 @@ pub struct TextureManager {
     images: HashMap<char, Image>,       // Store images for pixel access
     textures: HashMap<char, Texture2D>, // Store GPU textures for rendering
     sprite_sheets: HashMap<char, SpriteSheet>, // Store sprite sheet data
+    sword_image: Option<Image>,         // Store sword image for UI rendering
+    sword_texture: Option<Texture2D>,   // Store sword texture for GPU rendering
 }
 
 #[derive(Clone)]
@@ -27,11 +29,11 @@ impl TextureManager {
       
           let texture_files = vec![
             // Dark medieval stone for main structure
-            ('+', "assets/textures/elements/Elements_06-128x128_rgba.png"), // Dark stone corners
-            ('-', "assets/textures/metals/Metal_07-128x128_rgba.png"),      // Rusty metal horizontals
+            ('+', "assets/textures/elements/Elements_05-128x128_rgba.png"), // Dark stone corners
+            ('-', "assets/textures/metals/photorealistic/ptpmetal_rgba.png"),      // Rusty metal horizontals
             ('|', "assets/textures/elements/Elements_08-128x128_rgba.png"), // Weathered stone verticals
-            ('g', "assets/textures/large_door_rgba.png"),                   // Large imposing door
-            ('#', "assets/Horror_Metal_03-128x128_rgba.png"),               // Horror metal for variety
+            ('g', "assets/textures/elements/Elements_10-128x128_rgba.png"),                   // Large imposing door
+            ('#', "assets/elements/Elements_02-128x128_rgba.png"),               // Horror metal for variety
             ('e', "assets/sprite1_rgba.png"),                               // Enemy sprite
         ];
 
@@ -97,7 +99,33 @@ impl TextureManager {
             sprite_sheets.insert('a', sprite_sheet);
         }
 
-        TextureManager { images, textures, sprite_sheets }
+        // Load sword texture for attack animation
+        let (sword_image, sword_texture) = match Image::load_image("assets/sword2.png") {
+            Ok(image) => {
+                match rl.load_texture_from_image(thread, &image) {
+                    Ok(texture) => {
+                        println!("Successfully loaded sword texture: assets/sword2.png ({}x{})", image.width, image.height);
+                        (Some(image), Some(texture))
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create sword texture: {:?}", e);
+                        (None, None)
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to load sword image: {:?}", e);
+                (None, None)
+            }
+        };
+
+        TextureManager { 
+            images, 
+            textures, 
+            sprite_sheets,
+            sword_image,
+            sword_texture,
+        }
     }
 
     pub fn get_pixel_color(&self, ch: char, tx: u32, ty: u32) -> Color {
@@ -135,6 +163,10 @@ impl TextureManager {
 
     pub fn get_sprite_frame_size(&self, ch: char) -> Option<(u32, u32)> {
         self.sprite_sheets.get(&ch).map(|sheet| (sheet.frame_width, sheet.frame_height))
+    }
+
+    pub fn get_sword_texture(&self) -> Option<&Texture2D> {
+        self.sword_texture.as_ref()
     }
 }
 

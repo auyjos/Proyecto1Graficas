@@ -79,4 +79,35 @@ impl AudioManager {
             self.set_sound_volume(sound, 0.5); // Set walking sound volume to half of SFX volume
         }
     }
+
+    // Combat sound effects
+    pub fn play_sword_swing(&self, sound: &Sound) {
+        if self.is_sfx_enabled {
+            sound.play();
+        }
+    }
+
+    pub fn play_enemy_hit(&self, sound: &Sound) {
+        if self.is_sfx_enabled {
+            sound.play();
+        }
+    }
+
+    pub fn play_enemy_death(&self, sound: &Sound) {
+        if self.is_sfx_enabled {
+            sound.play();
+        }
+    }
+
+    pub fn setup_combat_sounds(&self, sword_sound: &mut Option<Sound>, hit_sound: &mut Option<Sound>, death_sound: &mut Option<Sound>) {
+        if let Some(sound) = sword_sound {
+            self.set_sound_volume(sound, 0.8); // Sword swing at 80% SFX volume
+        }
+        if let Some(sound) = hit_sound {
+            self.set_sound_volume(sound, 0.9); // Enemy hit at 90% SFX volume
+        }
+        if let Some(sound) = death_sound {
+            self.set_sound_volume(sound, 1.0); // Enemy death at full SFX volume
+        }
+    }
 }
